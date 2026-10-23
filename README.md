@@ -21,9 +21,9 @@ See `IMPLEMENTATION_PLAN.md`, `GLOSSARY.md` and `docs/adr/`.
 - `Sources/FoodDataCentral/` — the USDA FoodData Central adapter, normalizing FDC records to the contract's
   `DocumentedFood`. Additional regional sources get their own adapter producing the same type. The backend
   uses it; its tests use hand-built FDC fixtures.
-- `Sources/AUSNUT/` — the first regional source (ticket #13): FSANZ AUSNUT 2023, packaged as CSV exports of its
-  workbooks (`Resources/README.md` has their provenance) and normalized to the same `DocumentedFood` (ADR 0005).
-  It answers the recorded gap in `docs/calibration/source-gaps.md`.
+- `Sources/AUSNUT/` — the first regional source (ticket #13). It packages FSANZ AUSNUT 2023 as CSV exports of its
+  workbooks and normalizes them to the same `DocumentedFood` (ADR 0005). `Resources/README.md` records where the
+  files came from, and `docs/calibration/source-gaps.md` records the gap they answer.
 - `Sources/NutritionCalibration/` — the accuracy calibration pilot (ADR 0002): consented reference meals, trials
   that run one through `MealEntryWorkflow` recording the pre-review and reviewed estimates, the accuracy report
   by cuisine and dish type, and pass criteria frozen before the validation set is scored.
@@ -80,10 +80,9 @@ backend tests plus a build of its server, and a build of the iOS app for the Sim
 
 Its `MealPhotoAnalysis` library holds every decision (request validation, provider request building, response
 validation, failure mapping, credential handling); contract tests run it against hand-built Gemini and FDC
-replies, never a live model or API, and need no key. One feature test (`ExpandNutritionSourceCoverageFeatureTests`)
-spans app and backend: it drives `MealEntryWorkflow` through the real `HTTPMealAnalysisGateway`, whose requests
-it hands to `FoodSearchService` in-process, so the packaged AUSNUT data is searched for real and only FDC is
-faked.
+replies, never a live model or API, and need no key. One feature test, `ExpandNutritionSourceCoverageFeatureTests`,
+covers the app and backend together. It drives `MealEntryWorkflow` through the real `HTTPMealAnalysisGateway` and
+hands each request to `FoodSearchService` in-process. It searches the packaged AUSNUT data and fakes only FDC.
 
 ```sh
 cd Backend
@@ -95,7 +94,7 @@ GEMINI_API_KEY=... FDC_API_KEY=... swift run MealPhotoAnalysisServer  # macOS or
 | --- | --- |
 | `GEMINI_API_KEY` | Required for photo analysis. Without it that endpoint answers `notConfigured` and nothing is uploaded. |
 | `GEMINI_MODEL` | Optional, default `gemini-2.5-flash`. |
-| `FDC_API_KEY` | Required for FoodData Central results (sign up at https://fdc.nal.usda.gov/api-key-signup). Without it, or while FDC is unavailable, food search answers with AUSNUT 2023 foods alone; only when AUSNUT has no match either does it answer `notConfigured` (or `providerUnavailable`), and the app offers custom foods. |
+| `FDC_API_KEY` | Required for FoodData Central results (sign up at https://fdc.nal.usda.gov/api-key-signup). Without it, or while FDC is unavailable, food search returns only AUSNUT 2023 foods. If AUSNUT has no match either, it answers `notConfigured` (or `providerUnavailable`) and the app offers custom foods. |
 | `PORT`, `HOST` | Optional, default 8080 and 127.0.0.1. |
 
 - Both keys stay on the server: each is sent only in its outbound request header (`x-goog-api-key`,

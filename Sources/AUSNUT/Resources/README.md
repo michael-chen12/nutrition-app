@@ -1,11 +1,12 @@
 # Packaged AUSNUT 2023 data
 
-Source: Food Standards Australia New Zealand, AUSNUT 2023. Credit: "Food Standards Australia New Zealand",
-under the CC BY 4.0 licence on the [FSANZ copyright page](https://www.foodstandards.gov.au/copyright). Confirm
-the licence covers AUSNUT before shipping (`docs/calibration/source-gaps.md`).
+This is AUSNUT 2023 from Food Standards Australia New Zealand (FSANZ). The
+[FSANZ copyright page](https://www.foodstandards.gov.au/copyright) licenses its material under CC BY 4.0. Credit
+it as "Food Standards Australia New Zealand". Before shipping, confirm that the licence covers AUSNUT
+(`docs/calibration/source-gaps.md`).
 
-Each CSV is the data sheet of one FSANZ workbook, exported cell by cell (raw values, title row included) and
-otherwise unchanged. The workbooks were downloaded on 2026-10-23:
+Each CSV is the data sheet of one FSANZ workbook, exported cell by cell with raw values and the title row, and
+otherwise unchanged. These are the workbooks, downloaded on 2026-10-23.
 
 | File | Workbook and sheet | SHA-256 of the downloaded workbook |
 | --- | --- | --- |

@@ -96,9 +96,9 @@ The report shows calorie, protein, carbohydrate and fat errors for both stages, 
 type, with the missing-food rate and median correction time. Its **Gaps** section lists thin coverage (few
 cuisines, dish types or meals per group; unevaluated meals; meals whose photo analysis gave no suggestions,
 with the message shown, so an outage is not mistaken for missed foods; foods still missing after review; suggestions and
-custom foods with no documented food, i.e. candidates for another nutrition source, ADR 0003; record a gap and
-the source chosen for it in `source-gaps.md`) and estimation
-gaps (groups with calorie error well above the set's, or where review did not reduce it).
+custom foods with no documented food, i.e. candidates for another nutrition source, ADR 0003) and estimation
+gaps (groups with calorie error well above the set's, or where review did not reduce it). Record each source gap,
+and the source chosen for it, in `source-gaps.md`.
 
 After inspecting it, write the criteria as a JSON array of `PassCriterion`, each with the reason for its limit:
 
