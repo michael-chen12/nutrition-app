@@ -41,10 +41,13 @@ struct MealEntryDetailView: View {
     var body: some View {
         List {
             Section { MealPhotosView(photos: entry.photos) }
-            Section("Foods") {
+            Section("Pictured food") {
                 ForEach(entry.foods) { ReviewedFoodRow(food: $0) }
             }
-            Section { NutritionEstimateView(estimate: entry.nutritionEstimate) }
+            Section {
+                NutritionEstimateView(estimate: entry.nutritionEstimate)
+                PicturedFoodNoteView(note: entry.picturedFoodNote)
+            }
         }
         .navigationTitle(Text(entry.date, format: .dateTime.day().month().hour().minute()))
     }

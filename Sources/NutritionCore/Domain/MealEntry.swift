@@ -46,12 +46,22 @@ public struct ReviewedFood: Codable, Hashable, Identifiable, Sendable {
     public var portion: Portion
     /// Unresolved details retained with the result so a precise-looking number does not hide weak evidence.
     public var uncertaintyNotes: [UncertaintyNote]
+    /// The meal photos this food is visible in. Repeated views of the same food (other angles) are recorded
+    /// here rather than as another reviewed food, so the food counts once in the nutrition estimate.
+    public var photoIDs: [MealPhoto.ID]
 
-    public init(id: UUID = UUID(), food: Food, portion: Portion, uncertaintyNotes: [UncertaintyNote] = []) {
+    public init(
+        id: UUID = UUID(),
+        food: Food,
+        portion: Portion,
+        uncertaintyNotes: [UncertaintyNote] = [],
+        photoIDs: [MealPhoto.ID] = []
+    ) {
         self.id = id
         self.food = food
         self.portion = portion
         self.uncertaintyNotes = uncertaintyNotes
+        self.photoIDs = photoIDs
     }
 
     public var nutritionEstimate: NutritionEstimate {
