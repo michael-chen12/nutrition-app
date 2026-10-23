@@ -56,6 +56,22 @@ final class MealEntryModel {
         draftReview = workflow.draftReview
     }
 
+    private(set) var foodSearch: FoodSearchPresentation?
+
+    func searchFoods(matching query: String) async {
+        do {
+            foodSearch = try await workflow.searchFoods(matching: query)
+            errorMessage = nil
+        } catch {
+            errorMessage = "Food search is unavailable. You can add a custom food instead."
+        }
+    }
+
+    func addFood(_ result: FoodSearchResult, grams: Double) {
+        perform { _ = try workflow.addFood(result, grams: grams) }
+        draftReview = workflow.draftReview
+    }
+
     func save() {
         perform { _ = try workflow.saveMealEntry() }
         draftReview = workflow.draftReview

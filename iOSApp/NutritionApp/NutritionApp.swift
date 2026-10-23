@@ -15,7 +15,8 @@ struct NutritionApp: App {
     }
 }
 
-/// Placeholder until documented food lookup is wired in; manual meal entry needs no external calls.
+/// Placeholder until the backend serves documented food lookup (USDA FoodData Central records normalized with
+/// `FoodDataCentralRecord`; the API key stays on the backend). With no results, search points to a custom food.
 final class NoFoodLookupGateway: MealAnalysisGateway {
     func searchFoods(matching query: String) async throws -> [Food] { [] }
 }

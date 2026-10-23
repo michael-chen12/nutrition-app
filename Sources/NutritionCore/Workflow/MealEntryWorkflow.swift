@@ -49,15 +49,18 @@ public final class MealEntryWorkflow {
         grams: Double,
         shownIn photoIDs: [MealPhoto.ID] = []
     ) throws -> ReviewedFood.ID {
-        guard grams.isFinite, grams > 0 else { throw MealEntryWorkflowError.invalidGramAmount }
-        try requireDraftPhotos(photoIDs)
-        let reviewedFood = ReviewedFood(
-            food: Food(customFood),
-            portion: Portion(grams: grams),
-            photoIDs: photoIDs.uniqued()
-        )
-        editDraft { $0.reviewedFoods.append(reviewedFood) }
-        return reviewedFood.id
+        try addReviewedFood(Food(customFood), grams: grams, shownIn: photoIDs)
+    }
+
+    /// Adds a food chosen from search results with a gram amount to the draft, optionally noting which
+    /// meal photos show it. Its nutrient values and source reference come from the documented record.
+    @discardableResult
+    public func addFood(
+        _ searchResult: FoodSearchResult,
+        grams: Double,
+        shownIn photoIDs: [MealPhoto.ID] = []
+    ) throws -> ReviewedFood.ID {
+        try addReviewedFood(searchResult.food, grams: grams, shownIn: photoIDs)
     }
 
     /// Records that a food already in the draft is also visible in another meal photo (a repeated view,
@@ -88,6 +91,15 @@ public final class MealEntryWorkflow {
                 entry.reviewedFoods[keptIndex].uncertaintyNotes + repeated.uncertaintyNotes
             ).uniqued()
         }
+    }
+
+    // MARK: Food search
+
+    /// Searches documented nutrition sources through the external boundary. Each result shows where
+    /// its values come from.
+    public func searchFoods(matching query: String) async throws -> FoodSearchPresentation {
+        let foods = try await gateway.searchFoods(matching: query)
+        return FoodSearchPresentation(query: query, results: foods.map(FoodSearchResult.init))
     }
 
     /// Saves the draft to meal history and closes it.
@@ -123,6 +135,14 @@ public final class MealEntryWorkflow {
     }
 
     // MARK: Private
+
+    private func addReviewedFood(_ food: Food, grams: Double, shownIn photoIDs: [MealPhoto.ID]) throws -> ReviewedFood.ID {
+        guard grams.isFinite, grams > 0 else { throw MealEntryWorkflowError.invalidGramAmount }
+        try requireDraftPhotos(photoIDs)
+        let reviewedFood = ReviewedFood(food: food, portion: Portion(grams: grams), photoIDs: photoIDs.uniqued())
+        editDraft { $0.reviewedFoods.append(reviewedFood) }
+        return reviewedFood.id
+    }
 
     private func editDraft(_ change: (inout MealEntry) -> Void) {
         if draft == nil { startNewMealEntry() }

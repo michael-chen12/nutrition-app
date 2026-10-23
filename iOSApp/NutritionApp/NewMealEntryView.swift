@@ -13,6 +13,9 @@ struct NewMealEntryView: View {
     @State private var carbohydrates: Double?
     @State private var fat: Double?
     @State private var grams: Double?
+    @State private var searchQuery = ""
+    @State private var chosenResult: FoodSearchResult?
+    @State private var chosenGrams: Double?
     @State private var foodPhotoIDs: Set<MealPhoto.ID> = []
     @State private var photoCapture: MealPhotoCaptureModel?
     @State private var isPickingFromLibrary = false
@@ -28,6 +31,32 @@ struct NewMealEntryView: View {
                     Text("Meal photos")
                 } footer: {
                     Text("Add other angles and every dish in the meal.")
+                }
+                Section("Find a documented food") {
+                    TextField("Search foods", text: $searchQuery)
+                        .submitLabel(.search)
+                        .onSubmit { Task { await model.searchFoods(matching: searchQuery) } }
+                    if let search = model.foodSearch {
+                        if let message = search.noMatchMessage {
+                            Text(message).foregroundStyle(.secondary)
+                        }
+                        ForEach(search.results) { result in
+                            Button { chosenResult = result } label: {
+                                HStack {
+                                    FoodSearchResultRow(result: result)
+                                    if result.id == chosenResult?.id {
+                                        Spacer()
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    if let chosenResult {
+                        TextField("Amount (g)", value: $chosenGrams, format: .number).keyboardType(.decimalPad)
+                        Button("Add \(chosenResult.name)", action: addChosenFood).disabled(chosenGrams == nil)
+                    }
                 }
                 Section("Custom food (per 100 g)") {
                     TextField("Food name", text: $foodName)
@@ -109,6 +138,15 @@ struct NewMealEntryView: View {
             ForEach(review.foods.filter { $0.id != food.id }) { other in
                 Button(other.name) { model.combineFood(food.id, into: other.id) }
             }
+        }
+    }
+
+    private func addChosenFood() {
+        guard let chosenResult, let chosenGrams else { return }
+        model.addFood(chosenResult, grams: chosenGrams)
+        if model.errorMessage == nil {
+            self.chosenResult = nil
+            self.chosenGrams = nil
         }
     }
 

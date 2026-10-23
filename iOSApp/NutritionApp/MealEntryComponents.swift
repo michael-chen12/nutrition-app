@@ -29,11 +29,31 @@ struct ReviewedFoodRow: View {
     var body: some View {
         VStack(alignment: .leading) {
             Text(food.name)
-            Text("\(food.portion) · \(food.sourceName)").font(.caption).foregroundStyle(.secondary)
+            Text("\(food.portion) · \(SourceLabel.text(food.sourceName, food.sourceRecordID))")
+                .font(.caption).foregroundStyle(.secondary)
             if let shownIn = food.shownIn {
                 Text(shownIn).font(.caption).foregroundStyle(.secondary)
             }
         }
+    }
+}
+
+struct FoodSearchResultRow: View {
+    let result: FoodSearchResult
+
+    var body: some View {
+        VStack(alignment: .leading) {
+            Text(result.name)
+            Text(SourceLabel.text(result.sourceName, result.sourceRecordID))
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// "USDA FoodData Central · record 168878", or just "Custom food".
+enum SourceLabel {
+    static func text(_ sourceName: String, _ recordID: String?) -> String {
+        recordID.map { "\(sourceName) · record \($0)" } ?? sourceName
     }
 }
 
