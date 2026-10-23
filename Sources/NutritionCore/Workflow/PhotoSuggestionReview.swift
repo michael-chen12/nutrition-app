@@ -41,7 +41,7 @@ extension MealEntryWorkflow {
         guard let portion = Self.suggestedPortion(pending.suggestion.portion, for: match.result.food) else {
             throw MealEntryWorkflowError.suggestedPortionUnavailable
         }
-        return try accept(pending, as: match.result.food, portion: portion)
+        return try accept(pending, as: match.result.food, portion: portion, asSuggested: true)
     }
 
     /// Accepts a suggestion as a documented food — one of its matches or any food the person searched for —
@@ -55,7 +55,8 @@ extension MealEntryWorkflow {
     ) throws -> ReviewedFood.ID {
         let pending = try pendingSuggestion(suggestionID)
         let portion = try makePortion(quantity: quantity, unit: unit, for: searchResult.food)
-        return try accept(pending, as: searchResult.food, portion: portion)
+        let isSuggestedMatch = pending.matches?.contains(searchResult.food) ?? false
+        return try accept(pending, as: searchResult.food, portion: portion, asSuggested: isSuggestedMatch)
     }
 
     /// Accepts a suggestion as a custom food with nutrition the person provides, when no documented food fits.
@@ -67,7 +68,8 @@ extension MealEntryWorkflow {
     ) throws -> ReviewedFood.ID {
         let pending = try pendingSuggestion(suggestionID)
         let food = Food(customFood)
-        return try accept(pending, as: food, portion: try makePortion(quantity: grams, unit: .grams, for: food))
+        let portion = try makePortion(quantity: grams, unit: .grams, for: food)
+        return try accept(pending, as: food, portion: portion, asSuggested: false)
     }
 
     /// Separates a suggestion that joins likely views of the same food into one suggestion per view, in its
@@ -225,13 +227,24 @@ extension MealEntryWorkflow {
         return pending
     }
 
-    private func accept(_ pending: PendingSuggestion, as food: Food, portion: Portion) throws -> ReviewedFood.ID {
-        let foodID = try addReviewedFood(
-            food,
-            portion: portion,
-            shownIn: pending.photoIDs,
-            uncertaintyNotes: pending.suggestion.unresolvedDetails.map(UncertaintyNote.init)
-        )
+    /// Adds the suggestion as a reviewed food with its unresolved details. `asSuggested` says whether the person
+    /// kept the food the analysis matched (one of its documented matches) rather than correcting it to another
+    /// food; a weak match kept that way stays in doubt as an identity note.
+    private func accept(
+        _ pending: PendingSuggestion,
+        as food: Food,
+        portion: Portion,
+        asSuggested: Bool
+    ) throws -> ReviewedFood.ID {
+        var notes = pending.suggestion.unresolvedDetails.map(UncertaintyNote.init)
+        if asSuggested, pending.suggestion.isWeakMatch {
+            notes.append(UncertaintyNote(
+                detail: "Weak match: photo analysis wasn't sure this is \(pending.suggestion.name)",
+                kind: .identity,
+                question: "Is \(food.name) the right food?"
+            ))
+        }
+        let foodID = try addReviewedFood(food, portion: portion, shownIn: pending.photoIDs, uncertaintyNotes: notes)
         photoSuggestions?.pending.removeAll { $0.id == pending.id }
         return foodID
     }
@@ -305,12 +318,23 @@ extension PendingSuggestion {
         suggestion.photoIDs = views.flatMap(\.suggestion.photoIDs).uniqued()
         suggestion.portion = views.lazy.compactMap(\.suggestion.portion).first
         suggestion.unresolvedDetails = views.flatMap(\.suggestion.unresolvedDetails).uniqued()
+        // The group is only as sure as its least sure view.
+        if let weakView = views.first(where: \.suggestion.isWeakMatch) {
+            suggestion.matchConfidence = weakView.suggestion.matchConfidence
+        }
         self.init(
             suggestion: suggestion,
             photoIDs: views.flatMap(\.photoIDs).uniqued(),
             matches: first.matches,
             likelyDuplicates: LikelyDuplicates(views: views, reason: reason)
         )
+    }
+}
+
+extension FoodSuggestion {
+    /// The analysis rated its identity low, or gave no rating: the person is asked to check it.
+    var isWeakMatch: Bool {
+        matchConfidence == nil || matchConfidence == .low
     }
 }
 
@@ -408,6 +432,9 @@ public struct PresentedFoodSuggestion: Hashable, Identifiable, Sendable {
     public var shownIn: String?
     /// Specific details the photo cannot settle; kept with the food when it is accepted.
     public var uncertaintyNotes: [String]
+    /// Shown when photo analysis was unsure (or didn't say) that this is the named food, asking the person to
+    /// check it. Accepting one of its matches unchanged keeps that doubt as an uncertainty note.
+    public var checkMatchPrompt: String?
     /// Documented foods to accept it as, with their source.
     public var matches: [SuggestedFoodMatch]
     /// Shown when no documented food was found, pointing to search or a custom food.
@@ -428,6 +455,10 @@ public struct PresentedFoodSuggestion: Hashable, Identifiable, Sendable {
             return "\(seen)\(reason). It counts once unless you separate it."
         }
         uncertaintyNotes = pending.suggestion.unresolvedDetails.map(\.detail)
+        checkMatchPrompt = pending.suggestion.isWeakMatch
+            ? "Check this match: photo analysis isn't sure this is \(name). Compare it with your photo, "
+                + "or choose another food."
+            : nil
         matches = (pending.matches ?? []).map { SuggestedFoodMatch($0, portion: pending.suggestion.portion) }
         switch pending.matches {
         case nil:

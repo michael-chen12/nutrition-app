@@ -90,6 +90,38 @@ final class MealPhotoAnalysisContractTests: XCTestCase {
         ])
     }
 
+    /// Story 34: how sure the analysis is of each food's identity reaches the app, so it can ask the person to
+    /// check weak matches. A missing or unrecognized rating arrives as no rating, which the app treats as weak.
+    func test_matchConfidenceReachesTheAppAndAnUnrecognizedRatingIsDropped() async throws {
+        let output = """
+        {
+          "foods": [
+            { "id": "1", "name": "Rice", "searchQuery": "rice", "photoIds": ["\(Fixtures.photoID)"],
+              "unresolvedDetails": [], "matchConfidence": "high" },
+            { "id": "2", "name": "Curry", "searchQuery": "curry", "photoIds": ["\(Fixtures.photoID)"],
+              "unresolvedDetails": [], "matchConfidence": " Low " },
+            { "id": "3", "name": "Pickle", "searchQuery": "pickle", "photoIds": ["\(Fixtures.photoID)"],
+              "unresolvedDetails": [], "matchConfidence": "certain" },
+            { "id": "4", "name": "Bread", "searchQuery": "bread", "photoIds": ["\(Fixtures.photoID)"],
+              "unresolvedDetails": [] }
+          ],
+          "duplicateGroups": []
+        }
+        """
+        let transport = RecordingProviderTransport(.response(
+            statusCode: 200, body: Fixtures.generateContentReply(modelText: output)
+        ))
+
+        let reply = await makeService(transport).handle(requestBody: Fixtures.analysisRequestBody())
+
+        XCTAssertEqual(reply.statusCode, 200)
+        let response = try JSONDecoder().decode(MealPhotoAnalysisResponse.self, from: reply.body)
+        XCTAssertEqual(response.suggestions.map(\.matchConfidence), [.high, .low, nil, nil])
+        let sent = try XCTUnwrap(transport.sentRequests.first)
+        let schemaText = String(decoding: sent.body, as: UTF8.self)
+        XCTAssertTrue(schemaText.contains("\"matchConfidence\""), "Schema asks for match confidence")
+    }
+
     func test_modelNutrientGuessesNeverReachTheApp() async throws {
         let transport = RecordingProviderTransport(.response(
             statusCode: 200, body: Fixtures.generateContentReply(modelText: Fixtures.riceAndChickenOutput)

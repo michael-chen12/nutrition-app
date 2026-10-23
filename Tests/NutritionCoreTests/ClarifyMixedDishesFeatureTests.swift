@@ -47,7 +47,8 @@ final class ClarifyMixedDishesFeatureTests: XCTestCase {
                     UnresolvedDetail(
                         kind: .portion, detail: "Bowl depth unclear", question: "How much fried rice was there?"
                     ),
-                ]
+                ],
+                matchConfidence: .high
             ),
         ])
     }
@@ -205,7 +206,7 @@ final class ClarifyMixedDishesFeatureTests: XCTestCase {
             gateway.photoAnalysisResult = .success(MealPhotoAnalysisResponse(suggestions: [
                 FoodSuggestion(id: "1", name: "Fried rice", searchQuery: "fried rice vegetable",
                                photoIDs: [photo.uuidString], portion: PortionSuggestion(quantity: 200, unit: "g"),
-                               unresolvedDetails: [oilDetail]),
+                               unresolvedDetails: [oilDetail], matchConfidence: .high),
             ]))
             let analysis = try await workflow.analyzePhoto(photo)
             let suggestion = try XCTUnwrap(analysis.suggestions.first)

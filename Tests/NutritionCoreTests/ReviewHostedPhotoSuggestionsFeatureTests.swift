@@ -36,7 +36,8 @@ final class ReviewHostedPhotoSuggestionsFeatureTests: XCTestCase {
                 name: "Steamed white rice",
                 searchQuery: "rice white cooked",
                 photoIDs: [photo.uuidString],
-                portion: PortionSuggestion(quantity: 1, unit: "cup", grams: 158)
+                portion: PortionSuggestion(quantity: 1, unit: "cup", grams: 158),
+                matchConfidence: .high
             ),
             FoodSuggestion(
                 id: "food-2",
@@ -47,7 +48,8 @@ final class ReviewHostedPhotoSuggestionsFeatureTests: XCTestCase {
                 unresolvedDetails: [
                     UnresolvedDetail(kind: .ingredient, detail: "Cooking oil not visible"),
                     UnresolvedDetail(kind: .preparation, detail: "Sauce may contain added sugar"),
-                ]
+                ],
+                matchConfidence: .high
             ),
         ])
     }
@@ -236,6 +238,92 @@ final class ReviewHostedPhotoSuggestionsFeatureTests: XCTestCase {
         XCTAssertThrowsError(try workflow.rejectSuggestion(suggestion.id), "Already reviewed") { error in
             XCTAssertEqual(error as? MealEntryWorkflowError, .suggestionNotFound(suggestion.id))
         }
+    }
+
+    // MARK: Weak matches
+
+    /// Story 34: the app asks for corrections when its match is weak.
+    func test_aWeakOrUnratedMatchAsksThePersonToCheckIt() async throws {
+        let workflow = makeWorkflow()
+        workflow.startNewMealEntry()
+        let photo = workflow.importPhoto(platePhoto, fileExtension: "jpg")
+        gateway.photoAnalysisResult = .success(MealPhotoAnalysisResponse(suggestions: [
+            FoodSuggestion(id: "1", name: "Steamed white rice", searchQuery: "rice white cooked",
+                           photoIDs: [photo.uuidString], matchConfidence: .low),
+            FoodSuggestion(id: "2", name: "Stir-fried chicken", searchQuery: "chicken breast cooked",
+                           photoIDs: [photo.uuidString]),
+            FoodSuggestion(id: "3", name: "Steamed white rice", searchQuery: "rice white cooked",
+                           photoIDs: [photo.uuidString], matchConfidence: .medium),
+            FoodSuggestion(id: "4", name: "Stir-fried chicken", searchQuery: "chicken breast cooked",
+                           photoIDs: [photo.uuidString], matchConfidence: .high),
+        ]))
+        workflow.acceptPhotoAnalysisDisclosure()
+
+        let analysis = try await workflow.analyzePhoto(photo)
+
+        XCTAssertEqual(analysis.suggestions.map(\.checkMatchPrompt), [
+            "Check this match: photo analysis isn't sure this is Steamed white rice. Compare it with your photo, "
+                + "or choose another food.",
+            "Check this match: photo analysis isn't sure this is Stir-fried chicken. Compare it with your photo, "
+                + "or choose another food.",
+            nil,
+            nil,
+        ])
+    }
+
+    func test_aWeakMatchAcceptedUnchangedKeepsItsUncertaintyButACorrectedOneDoesNot() async throws {
+        let jasmineRice = Food(
+            name: "Rice, jasmine, cooked",
+            nutrientsPer100g: NutrientsPer100g(calories: 129, protein: 2.9, carbohydrates: 28, fat: 0.2),
+            source: .documented(SourceReference(sourceName: "USDA FoodData Central", recordID: "2512381"))
+        )
+        gateway.foodSearchResults["jasmine rice"] = [jasmineRice]
+        let workflow = makeWorkflow(store: try FileMealHistoryStore(directory: directory.url))
+        workflow.startNewMealEntry()
+        let photo = workflow.importPhoto(platePhoto, fileExtension: "jpg")
+        gateway.photoAnalysisResult = .success(MealPhotoAnalysisResponse(suggestions: [
+            FoodSuggestion(id: "1", name: "Steamed white rice", searchQuery: "rice white cooked",
+                           photoIDs: [photo.uuidString], portion: PortionSuggestion(quantity: 1, unit: "cup"),
+                           matchConfidence: .low),
+            FoodSuggestion(id: "2", name: "Stir-fried chicken", searchQuery: "chicken breast cooked",
+                           photoIDs: [photo.uuidString]),
+            FoodSuggestion(id: "3", name: "Steamed white rice", searchQuery: "rice white cooked",
+                           photoIDs: [photo.uuidString], matchConfidence: .low),
+            FoodSuggestion(id: "4", name: "Stir-fried chicken", searchQuery: "chicken breast cooked",
+                           photoIDs: [photo.uuidString], matchConfidence: .high),
+        ]))
+        workflow.acceptPhotoAnalysisDisclosure()
+        let analysis = try await workflow.analyzePhoto(photo)
+        let (weakRice, unratedChicken, correctedRice, sureChicken) = (
+            analysis.suggestions[0], analysis.suggestions[1], analysis.suggestions[2], analysis.suggestions[3]
+        )
+
+        // Accepted as suggested: the match stays in doubt.
+        try workflow.acceptSuggestion(weakRice.id, as: try XCTUnwrap(weakRice.matches.first))
+        try workflow.acceptSuggestion(
+            unratedChicken.id, as: try XCTUnwrap(unratedChicken.matches.first?.result), quantity: 100, unit: .grams
+        )
+        // Corrected to another food the person searched for: the person settled it.
+        let jasmine = try await workflow.searchFoods(matching: "jasmine rice")
+        try workflow.acceptSuggestion(correctedRice.id, as: try XCTUnwrap(jasmine.results.first), quantity: 100, unit: .grams)
+        // A confident match needs no check.
+        try workflow.acceptSuggestion(
+            sureChicken.id, as: try XCTUnwrap(sureChicken.matches.first?.result), quantity: 100, unit: .grams
+        )
+
+        let id = try workflow.saveMealEntry()
+        let saved = try workflow.openMealEntry(id: id)
+        XCTAssertEqual(saved.foods.map(\.uncertaintyNotes), [
+            ["Weak match: photo analysis wasn't sure this is Steamed white rice"],
+            ["Weak match: photo analysis wasn't sure this is Stir-fried chicken"],
+            [],
+            [],
+        ])
+        XCTAssertEqual(saved.focusedQuestions.map(\.question), [
+            "Is Rice, white, long-grain, cooked the right food?",
+            "Is Chicken, broilers or fryers, breast, roasted the right food?",
+        ])
+        XCTAssertEqual(saved.focusedQuestions.map(\.kind), [.identity, .identity])
     }
 
     // MARK: Failures

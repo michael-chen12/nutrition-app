@@ -54,6 +54,8 @@ enum GeminiRequest {
     (preparation), or how much there is (portion). For each, give the detail, a short focused question to ask \
     the person (for example "Was it cooked in oil? How much?"), and, when the answer may mean adding a hidden \
     ingredient, a searchQuery for that ingredient (for example "oil vegetable").
+    - matchConfidence: how sure you are that the food is what you named: high, medium or low. Use low when the \
+    photos leave its identity unclear, so the person is asked to check it.
 
     For mixed dishes, ask about high-impact details a photo cannot show, such as cooking oil or butter, sauces \
     and dressings, added sugar, and whether the food was fried. Ask instead of guessing: never state a hidden \
@@ -89,6 +91,10 @@ enum GeminiRequest {
                                 "grams": ["type": "NUMBER"],
                             ],
                             "required": ["quantity", "unit"],
+                        ],
+                        "matchConfidence": [
+                            "type": "STRING",
+                            "enum": .array(MatchConfidence.allCases.map { .string($0.rawValue) }),
                         ],
                         "unresolvedDetails": [
                             "type": "ARRAY",

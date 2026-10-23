@@ -13,7 +13,7 @@ See `IMPLEMENTATION_PLAN.md`, `GLOSSARY.md` and `docs/adr/`.
   Meal history is grouped by day: a meal entry belongs to the calendar day containing its date in the
   `Calendar` (and time zone) given to `MealEntryWorkflow`; the app passes `.current`, tests a fixed one.
 - `Sources/AnalysisContract/` — the Codable wire contract between the app and the backend: photo analysis
-  (request with meal photos; response with candidate foods, portion suggestions,
+  (request with meal photos; response with candidate foods, match confidence, portion suggestions,
   duplicate-group hints and specific unresolved details) and food search (query; documented foods with source
   name, record ID, nutrients per 100 g and serving units), plus error codes. Photo analysis never carries
   nutrient values: nutrients come only from documented foods or custom foods once the person accepts a

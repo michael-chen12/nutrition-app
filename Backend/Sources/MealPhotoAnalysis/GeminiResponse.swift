@@ -3,8 +3,9 @@ import Foundation
 
 /// Reads a Gemini `generateContent` reply into the shared contract, refusing anything that does not fit it.
 ///
-/// Only names, search queries, photo references, portion suggestions and unresolved details pass through.
-/// Anything else the model adds (such as nutrient guesses) is dropped, since the contract has no place for it.
+/// Only names, search queries, photo references, portion suggestions, unresolved details and match confidence
+/// pass through. Anything else the model adds (such as nutrient guesses) is dropped, since the contract has no
+/// place for it.
 enum GeminiResponse {
     struct MalformedOutput: Error {
         var reason: String
@@ -63,7 +64,8 @@ enum GeminiResponse {
                         question: nonEmpty(detail.question),
                         searchQuery: nonEmpty(detail.searchQuery)
                     )
-                }
+                },
+                matchConfidence: nonEmpty(food.matchConfidence).flatMap { MatchConfidence(rawValue: $0.lowercased()) }
             )
         }
         let duplicateGroups = try output.duplicateGroups.map { group -> DuplicateGroupHint in
@@ -133,9 +135,10 @@ enum GeminiResponse {
             var photoIds: [String]
             var portion: Portion?
             var unresolvedDetails: [Detail]
+            var matchConfidence: String?
 
             private enum CodingKeys: String, CodingKey {
-                case id, name, searchQuery, photoIds, portion, unresolvedDetails
+                case id, name, searchQuery, photoIds, portion, unresolvedDetails, matchConfidence
             }
 
             init(from decoder: Decoder) throws {
@@ -146,6 +149,7 @@ enum GeminiResponse {
                 photoIds = try container.decode([String].self, forKey: .photoIds)
                 portion = try container.decodeIfPresent(Portion.self, forKey: .portion)
                 unresolvedDetails = try container.decodeIfPresent([Detail].self, forKey: .unresolvedDetails) ?? []
+                matchConfidence = try? container.decodeIfPresent(String.self, forKey: .matchConfidence)
             }
         }
 

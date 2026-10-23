@@ -79,6 +79,9 @@ public struct FoodSuggestion: Codable, Hashable, Sendable {
     public var portion: PortionSuggestion?
     /// Specific details the photo cannot settle; never filled in by guessing.
     public var unresolvedDetails: [UnresolvedDetail]
+    /// How sure the analysis is that this is the named food; nil when it gave no (recognized) rating. The app
+    /// treats a low or missing rating as a weak match and asks the person to check it.
+    public var matchConfidence: MatchConfidence?
 
     public init(
         id: String,
@@ -86,7 +89,8 @@ public struct FoodSuggestion: Codable, Hashable, Sendable {
         searchQuery: String,
         photoIDs: [String],
         portion: PortionSuggestion? = nil,
-        unresolvedDetails: [UnresolvedDetail] = []
+        unresolvedDetails: [UnresolvedDetail] = [],
+        matchConfidence: MatchConfidence? = nil
     ) {
         self.id = id
         self.name = name
@@ -94,10 +98,11 @@ public struct FoodSuggestion: Codable, Hashable, Sendable {
         self.photoIDs = photoIDs
         self.portion = portion
         self.unresolvedDetails = unresolvedDetails
+        self.matchConfidence = matchConfidence
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, searchQuery, photoIDs, portion, unresolvedDetails
+        case id, name, searchQuery, photoIDs, portion, unresolvedDetails, matchConfidence
     }
 
     public init(from decoder: Decoder) throws {
@@ -108,7 +113,17 @@ public struct FoodSuggestion: Codable, Hashable, Sendable {
         photoIDs = try container.decode([String].self, forKey: .photoIDs)
         portion = try container.decodeIfPresent(PortionSuggestion.self, forKey: .portion)
         unresolvedDetails = try container.decodeIfPresent([UnresolvedDetail].self, forKey: .unresolvedDetails) ?? []
+        // A rating this version does not know decodes as none.
+        matchConfidence = try container.decodeIfPresent(String.self, forKey: .matchConfidence)
+            .flatMap(MatchConfidence.init(rawValue:))
     }
+}
+
+/// How sure the photo analysis is of a suggested food's identity.
+public enum MatchConfidence: String, Codable, Hashable, Sendable, CaseIterable {
+    case high
+    case medium
+    case low
 }
 
 /// A suggested portion: a quantity of a familiar unit ("1 cup", "2 slices", "150 g"), with the analysis's

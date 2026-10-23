@@ -101,6 +101,9 @@ struct SuggestionRow: View {
             Text(suggestion.name)
             Text([suggestion.suggestedPortion, suggestion.shownIn].compactMap { $0 }.joined(separator: " · "))
                 .font(.caption).foregroundStyle(.secondary)
+            if let prompt = suggestion.checkMatchPrompt {
+                Label(prompt, systemImage: "exclamationmark.magnifyingglass").font(.caption).foregroundStyle(.orange)
+            }
             if let note = suggestion.likelyDuplicateNote {
                 Label(note, systemImage: "square.on.square").font(.caption).foregroundStyle(.secondary)
             }

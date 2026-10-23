@@ -54,20 +54,24 @@ final class ReconcileSuggestionsAcrossPhotosFeatureTests: XCTestCase {
             suggestions: [
                 FoodSuggestion(
                     id: "pasta-above", name: "Pasta with tomato sauce", searchQuery: "pasta tomato sauce",
-                    photoIDs: [above.uuidString], portion: PortionSuggestion(quantity: 250, unit: "g")
+                    photoIDs: [above.uuidString], portion: PortionSuggestion(quantity: 250, unit: "g"),
+                    matchConfidence: .high
                 ),
                 FoodSuggestion(
                     id: "bread", name: "Shared bread basket", searchQuery: "bread roll",
-                    photoIDs: [third.uuidString], portion: PortionSuggestion(quantity: 80, unit: "g")
+                    photoIDs: [third.uuidString], portion: PortionSuggestion(quantity: 80, unit: "g"),
+                    matchConfidence: .high
                 ),
                 FoodSuggestion(
                     id: "pasta-side", name: "Pasta with tomato sauce", searchQuery: "pasta tomato sauce",
                     photoIDs: [side.uuidString], portion: PortionSuggestion(quantity: 300, unit: "g"),
-                    unresolvedDetails: [UnresolvedDetail(kind: .portion, detail: "Plate depth unclear")]
+                    unresolvedDetails: [UnresolvedDetail(kind: .portion, detail: "Plate depth unclear")],
+                    matchConfidence: .high
                 ),
                 FoodSuggestion(
                     id: "fries", name: "Leftover french fries", searchQuery: "french fries",
-                    photoIDs: [third.uuidString], portion: PortionSuggestion(quantity: 50, unit: "g")
+                    photoIDs: [third.uuidString], portion: PortionSuggestion(quantity: 50, unit: "g"),
+                    matchConfidence: .high
                 ),
             ],
             duplicateGroups: [
