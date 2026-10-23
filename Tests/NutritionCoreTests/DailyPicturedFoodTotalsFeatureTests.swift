@@ -57,6 +57,46 @@ final class DailyPicturedFoodTotalsFeatureTests: XCTestCase {
         XCTAssertEqual(days[1].mealEntries.map(\.nutritionEstimate.calories), ["120 kcal", "260 kcal"])
     }
 
+    func test_reDatingASavedMealEntryMovesItToAnotherDayAndChangesOnlyThoseTwoDaysTotals() async throws {
+        let earlierDinner = try await saveMealEntry(at: time(2026, 10, 19, 19, 0), plantain: 80)
+        let breakfast = try await saveMealEntry(at: time(2026, 10, 20, 8, 0), rice: 150)
+        let lateDinner = try await saveMealEntry(at: time(2026, 10, 20, 23, 30), plantain: 80)
+        let lunch = try await saveMealEntry(at: time(2026, 10, 21, 12, 30), rice: 100, sauce: 120)
+
+        let editing = try launchApp(now: time(2026, 10, 22, 9, 0))
+        try editing.editMealEntry(id: breakfast)
+        // The breakfast was really on 21 October.
+        editing.changeDate(to: time(2026, 10, 21, 8, 0))
+        XCTAssertEqual(editing.draftReview?.date, time(2026, 10, 21, 8, 0))
+        try editing.saveMealEntry()
+
+        let days = try launchApp().dailyMealHistory()
+        XCTAssertEqual(days.map(\.day), [dayComponents(2026, 10, 21), dayComponents(2026, 10, 20), dayComponents(2026, 10, 19)])
+        XCTAssertEqual(days.map { $0.mealEntries.map(\.id) }, [[lunch, breakfast], [lateDinner], [earlierDinner]])
+        // 21 October gains the rice 150 g (195 kcal, 4.035 g, 42.255 g, 0.42 g): 226 + 195 kcal.
+        assertTotal(days[0].picturedFoodTotal, "421 kcal", "8.5 g", "81.2 g", "5.7 g")
+        // 20 October loses it: plantain 80 g only.
+        assertTotal(days[1].picturedFoodTotal, "120 kcal", "1 g", "25.6 g", "2.4 g")
+        // 19 October is unrelated and unchanged.
+        assertTotal(days[2].picturedFoodTotal, "120 kcal", "1 g", "25.6 g", "2.4 g")
+    }
+
+    func test_aNewMealEntryIsDatedNowUnlessThePersonChoosesAnotherDate() async throws {
+        let workflow = try launchApp(now: time(2026, 10, 22, 9, 0))
+        workflow.startNewMealEntry()
+        XCTAssertEqual(workflow.draftReview?.date, time(2026, 10, 22, 9, 0))
+
+        // Recorded the next morning, for last night's dinner.
+        workflow.changeDate(to: time(2026, 10, 21, 19, 30))
+        try workflow.addCustomFood(EditSavedMealEntryFeatureTests.friedPlantain, grams: 80)
+        let dinner = try workflow.saveMealEntry()
+
+        let days = try launchApp().dailyMealHistory()
+        XCTAssertEqual(days.map(\.day), [dayComponents(2026, 10, 21)])
+        XCTAssertEqual(days.first?.mealEntries.map(\.id), [dinner])
+        XCTAssertEqual(days.first?.mealEntries.map(\.date), [time(2026, 10, 21, 19, 30)])
+    }
+
     func test_aMealEntrysDayFollowsTheCalendarAndTimeZoneTheAppIsGiven() async throws {
         // 23:30 on 20 October in New York is 03:30 on 21 October in UTC.
         let lateDinner = try await saveMealEntry(at: time(2026, 10, 20, 23, 30), plantain: 80)

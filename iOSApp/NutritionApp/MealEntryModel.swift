@@ -32,6 +32,12 @@ final class MealEntryModel {
         photoAnalysis = workflow.photoSuggestionReview
     }
 
+    /// When the meal took place; decides its day in meal history.
+    func changeDate(to date: Date) {
+        workflow.changeDate(to: date)
+        draftReview = workflow.draftReview
+    }
+
     func changePortion(of foodID: ReviewedFood.ID, grams: Double) {
         perform { try workflow.changePortion(of: foodID, grams: grams) }
         draftReview = workflow.draftReview

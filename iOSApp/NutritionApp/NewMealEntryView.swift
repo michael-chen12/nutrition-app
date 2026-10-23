@@ -27,6 +27,13 @@ struct NewMealEntryView: View {
     var body: some View {
         NavigationStack {
             Form {
+                if let date = model.draftReview?.date {
+                    Section {
+                        DatePicker("Meal date", selection: Binding(get: { date }, set: { model.changeDate(to: $0) }))
+                    } footer: {
+                        Text("The meal entry counts toward this day in meal history.")
+                    }
+                }
                 Section {
                     if let review = model.draftReview { MealPhotosView(photos: review.photos) }
                     PhotosPicker("Add photos", selection: $photoSelection, matching: .images)

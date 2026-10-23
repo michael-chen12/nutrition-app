@@ -91,9 +91,17 @@ public final class MealEntryWorkflow {
         return try addReviewedFood(searchResult.food, portion: portion, shownIn: photoIDs)
     }
 
+    /// Sets when the meal under review took place, e.g. when recording it later. A new meal entry is dated now
+    /// until changed. The date decides which day of meal history the meal entry is assigned to, so re-dating a
+    /// saved meal entry moves it between days once saved.
+    public func changeDate(to date: Date) {
+        editDraft { $0.date = date }
+    }
+
     /// Reopens a saved meal entry for review, discarding any unsaved draft. Its meal photos, reviewed foods,
     /// uncertainty notes and source references come along; saving replaces the same meal entry (same
-    /// identity, same date) with a nutrition estimate recalculated from its foods at that time.
+    /// identity, and the same date unless changed with `changeDate(to:)`) with a nutrition estimate
+    /// recalculated from its foods at that time.
     public func editMealEntry(id: MealEntry.ID) throws {
         guard let entry = try store.mealEntry(id: id) else { throw MealEntryWorkflowError.mealEntryNotFound(id) }
         draft = entry
