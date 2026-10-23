@@ -121,15 +121,28 @@ final class MealEntryModel {
     /// The person accepted the disclosure for this photo: upload it and show the suggestions (or why there
     /// are none, with the manual path still open).
     func uploadForAnalysis(_ photoID: MealPhoto.ID) async {
+        await uploadForAnalysis([photoID])
+    }
+
+    /// The person accepted the disclosure for these photos: upload them together for one analysis, so
+    /// repeated views of a food are grouped and distinct dishes kept.
+    func uploadForAnalysis(_ photoIDs: [MealPhoto.ID]) async {
         workflow.acceptPhotoAnalysisDisclosure()
         isAnalyzingPhoto = true
         defer { isAnalyzingPhoto = false }
         do {
-            photoAnalysis = try await workflow.analyzePhoto(photoID)
+            photoAnalysis = try await workflow.analyzePhotos(photoIDs)
             errorMessage = nil
         } catch {
-            errorMessage = "This photo can't be analyzed. You can still add foods yourself."
+            errorMessage = photoIDs.count == 1
+                ? "This photo can't be analyzed. You can still add foods yourself."
+                : "These photos can't be analyzed. You can still add foods yourself."
         }
+    }
+
+    /// The grouped views are different foods after all: review each on its own.
+    func separateSuggestion(_ id: PresentedFoodSuggestion.ID) {
+        reviewSuggestion { _ = try workflow.separateSuggestion(id) }
     }
 
     func acceptSuggestion(_ id: PresentedFoodSuggestion.ID, as match: SuggestedFoodMatch) {
