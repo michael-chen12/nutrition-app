@@ -95,7 +95,7 @@ GEMINI_API_KEY=... FDC_API_KEY=... swift run MealPhotoAnalysisServer  # macOS or
 | --- | --- |
 | `GEMINI_API_KEY` | Required for photo analysis. Without it that endpoint answers `notConfigured` and nothing is uploaded. |
 | `GEMINI_MODEL` | Optional, default `gemini-2.5-flash`. |
-| `FDC_API_KEY` | Required for food search (sign up at https://fdc.nal.usda.gov/api-key-signup). Without it food search answers `notConfigured` and the app offers custom foods. |
+| `FDC_API_KEY` | Required for FoodData Central results (sign up at https://fdc.nal.usda.gov/api-key-signup). Without it, or while FDC is unavailable, food search answers with AUSNUT 2023 foods alone; only when AUSNUT has no match either does it answer `notConfigured` (or `providerUnavailable`), and the app offers custom foods. |
 | `PORT`, `HOST` | Optional, default 8080 and 127.0.0.1. |
 
 - Both keys stay on the server: each is sent only in its outbound request header (`x-goog-api-key`,

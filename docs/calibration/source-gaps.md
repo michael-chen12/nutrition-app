@@ -36,7 +36,8 @@ licence and more South Asian dishes but no portions. MEXT 2023 has Japanese name
 
 **Overlap with FDC.** Both sources have plain foods such as cooked rice. Search results alternate between the
 two sources, FDC first, and every result shows its source name and record ID, so the person picks the suitable
-match or adds a custom food.
+match or adds a custom food. AUSNUT is packaged with the backend, so it still answers when FDC is not set up
+or unavailable.
 
 **Before shipping.** FSANZ's [copyright page](https://www.foodstandards.gov.au/copyright) licenses its website
 material under CC BY 4.0, including commercial use, but does not name AUSNUT. Confirm with FSANZ that the

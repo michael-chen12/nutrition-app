@@ -3,7 +3,8 @@
 // Package.swift).
 //
 // Environment: GEMINI_API_KEY (required for analysis; never logged), GEMINI_MODEL (optional), FDC_API_KEY
-// (required for food search; never logged), PORT (default 8080), HOST (default 127.0.0.1, so the development
+// (required for FoodData Central results; without it food search answers from the packaged AUSNUT 2023 data alone;
+// never logged), PORT (default 8080), HOST (default 127.0.0.1, so the development
 // backend is reachable only from this machine).
 
 import AnalysisContract
@@ -27,7 +28,7 @@ if configuration.credential == nil {
     print("GEMINI_API_KEY is not set: photo analysis requests will be answered with notConfigured.")
 }
 if foodDataCentral.credential == nil {
-    print("FDC_API_KEY is not set: food search requests will be answered with notConfigured.")
+    print("FDC_API_KEY is not set: food search will answer with AUSNUT 2023 foods only.")
 }
 print("Using Gemini model \(configuration.model). Re-verify the model, quota and terms in the developer account.")
 

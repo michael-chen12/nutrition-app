@@ -33,8 +33,10 @@ public struct FoodDataCentralConfiguration: Sendable {
 /// - The packaged AUSNUT 2023 data (`AUSNUTDataset`), which covers mixed dishes FDC lacks (ticket #13).
 ///
 /// The reply alternates between the two sources' results, FDC first, so overlapping foods appear side by side
-/// with their source names and either source's best matches reach the top. FDC failures still fail the whole
-/// search, as before. Every reply is JSON in the shared contract: a `FoodSearchResponse` (200) or an
+/// with their source names and either source's best matches reach the top. When FDC is not set up (no key) or
+/// fails, the AUSNUT results are answered alone; only when AUSNUT has no match either is FDC's failure reported
+/// (`notConfigured`, `providerUnavailable` or `malformedProviderOutput`). Every reply is JSON in the shared
+/// contract: a `FoodSearchResponse` (200) or an
 /// `AnalysisErrorResponse`. The key is sent only in the `X-Api-Key` request header; FDC replies and transport
 /// errors are never forwarded, so the key cannot leak to the app.
 public struct FoodSearchService: Sendable {
@@ -78,24 +80,26 @@ public struct FoodSearchService: Sendable {
         guard query.count <= Self.maximumQueryLength else {
             return .failure(400, .invalidRequest, "Use a shorter food search.")
         }
-        guard let credential else {
-            return .failure(503, .notConfigured, "Food search is not set up on the server.")
-        }
-
+        let ausnutFoods = ausnut.search(query, limit: Self.maximumResults)
+        let fdcFoods: [DocumentedFood]
         do {
-            let fdcFoods = try await fdcFoods(matching: query, credential: credential)
-            let ausnutFoods = ausnut.search(query, limit: Self.maximumResults)
-            let foods = Self.alternating(fdcFoods, ausnutFoods).prefix(Self.maximumResults)
-            return .success(FoodSearchResponse(foods: Array(foods)))
-        } catch let failure as SourceFailure {
-            return failure.reply
+            fdcFoods = try await self.fdcFoods(matching: query)
         } catch {
-            return .foodSourceUnavailable
+            // AUSNUT is packaged with the backend, so it still answers. With no AUSNUT match the failure is
+            // reported: an empty reply would tell the person no documented food matches.
+            guard ausnutFoods.isEmpty else { return .success(FoodSearchResponse(foods: ausnutFoods)) }
+            return (error as? SourceFailure)?.reply ?? .foodSourceUnavailable
         }
+        let foods = Self.alternating(fdcFoods, ausnutFoods).prefix(Self.maximumResults)
+        return .success(FoodSearchResponse(foods: Array(foods)))
     }
 
     /// FDC's suitable foods for the query in its relevance order, with their full records' serving units.
-    private func fdcFoods(matching query: String, credential: ProviderCredential) async throws -> [DocumentedFood] {
+    /// Throws a `SourceFailure` when FDC is not set up (no key) or gives no usable reply.
+    private func fdcFoods(matching query: String) async throws -> [DocumentedFood] {
+        guard let credential else {
+            throw SourceFailure(reply: .failure(503, .notConfigured, "Food search is not set up on the server."))
+        }
         let hits = try await post(
             SearchBody(query: query, dataType: Self.dataTypes, pageSize: Self.maximumResults),
             to: "foods/search", credential: credential, decoding: FoodDataCentralSearchResponse.self

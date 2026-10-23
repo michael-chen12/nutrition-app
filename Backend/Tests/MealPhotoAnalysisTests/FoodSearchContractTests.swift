@@ -142,7 +142,7 @@ final class FoodSearchContractTests: XCTestCase {
         XCTAssertTrue(transport.sentRequests.isEmpty)
     }
 
-    func test_withoutAKeyTheBackendAnswersNotConfiguredAndCallsNothing() async throws {
+    func test_withoutAKeyAndNoAUSNUTMatchTheBackendAnswersNotConfiguredAndCallsNothing() async throws {
         let transport = riceTransport
 
         let reply = await makeService(transport, credential: nil).handle(requestBody: FDCFixtures.searchRequestBody("rice"))
@@ -152,10 +152,49 @@ final class FoodSearchContractTests: XCTestCase {
         XCTAssertTrue(transport.sentRequests.isEmpty)
     }
 
-    func test_sourceFailuresAreMappedWithoutEchoingTheKeyOrTheSourceReply() async throws {
+    func test_withoutAKeyAUSNUTFoodsAreAnsweredWithoutCallingFDC() async throws {
+        let transport = riceTransport
+
+        let reply = await makeService(transport, credential: nil, ausnut: AUSNUTFixtures.rice)
+            .handle(requestBody: FDCFixtures.searchRequestBody("rice white cooked"))
+
+        XCTAssertEqual(reply.statusCode, 200)
+        let foods = try JSONDecoder().decode(FoodSearchResponse.self, from: reply.body).foods
+        XCTAssertEqual(foods.map(\.recordID), ["F007661", "F007662"])
+        XCTAssertTrue(transport.sentRequests.isEmpty)
+    }
+
+    func test_whenFDCFailsAUSNUTFoodsAreAnsweredWithoutEchoingTheKeyOrTheSourceReply() async throws {
+        for (transport, _, _) in fdcFailures {
+            let reply = await makeService(transport, ausnut: AUSNUTFixtures.rice)
+                .handle(requestBody: FDCFixtures.searchRequestBody("rice white cooked"))
+
+            XCTAssertEqual(reply.statusCode, 200)
+            let foods = try JSONDecoder().decode(FoodSearchResponse.self, from: reply.body).foods
+            XCTAssertEqual(foods.map(\.recordID), ["F007661", "F007662"])
+            let text = String(decoding: reply.body, as: UTF8.self)
+            XCTAssertFalse(text.contains(FDCFixtures.testKey), "Reply leaked the key: \(text)")
+            XCTAssertFalse(text.contains("API_KEY_INVALID"), "Reply forwarded the source's reply: \(text)")
+        }
+    }
+
+    func test_whenFDCFailsAndAUSNUTHasNoMatchFailuresAreMappedWithoutEchoingTheKeyOrTheSourceReply() async throws {
+        for (transport, status, code) in fdcFailures {
+            let reply = await makeService(transport).handle(requestBody: FDCFixtures.searchRequestBody("rice"))
+
+            XCTAssertEqual(reply.statusCode, status)
+            XCTAssertEqual(try JSONDecoder().decode(AnalysisErrorResponse.self, from: reply.body).code, code)
+            let text = String(decoding: reply.body, as: UTF8.self)
+            XCTAssertFalse(text.contains(FDCFixtures.testKey), "Reply leaked the key: \(text)")
+            XCTAssertFalse(text.contains("API_KEY_INVALID"), "Reply forwarded the source's reply: \(text)")
+        }
+    }
+
+    /// FDC failing in each way, with the reply the backend gives when nothing else matches. Some carry the key.
+    private var fdcFailures: [(ScriptedFoodDataCentralTransport, Int, AnalysisErrorCode)] {
         let keyInError = SimulatedNetworkError(description: "connection reset; X-Api-Key: \(FDCFixtures.testKey)")
         let keyInReply = #"{ "error": { "code": "API_KEY_INVALID", "message": "\#(FDCFixtures.testKey) is invalid" } }"#
-        let cases: [(ScriptedFoodDataCentralTransport, Int, AnalysisErrorCode)] = [
+        return [
             (ScriptedFoodDataCentralTransport(search: .transportError(keyInError)), 502, .providerUnavailable),
             (ScriptedFoodDataCentralTransport(search: .response(statusCode: 403, body: keyInReply)), 502, .providerUnavailable),
             (ScriptedFoodDataCentralTransport(search: .response(statusCode: 429, body: keyInReply)), 502, .providerUnavailable),
@@ -175,16 +214,6 @@ final class FoodSearchContractTests: XCTestCase {
                 502, .malformedProviderOutput
             ),
         ]
-
-        for (transport, status, code) in cases {
-            let reply = await makeService(transport).handle(requestBody: FDCFixtures.searchRequestBody("rice"))
-
-            XCTAssertEqual(reply.statusCode, status)
-            XCTAssertEqual(try JSONDecoder().decode(AnalysisErrorResponse.self, from: reply.body).code, code)
-            let text = String(decoding: reply.body, as: UTF8.self)
-            XCTAssertFalse(text.contains(FDCFixtures.testKey), "Reply leaked the key: \(text)")
-            XCTAssertFalse(text.contains("API_KEY_INVALID"), "Reply forwarded the source's reply: \(text)")
-        }
     }
 
     func test_keyComesFromTheBackendEnvironmentAndIsNeverPrinted() {
