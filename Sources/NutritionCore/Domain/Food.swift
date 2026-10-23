@@ -6,15 +6,63 @@ public struct Food: Codable, Hashable, Sendable {
     public var name: String
     public var nutrientsPer100g: NutrientsPer100g
     public var source: FoodSource
+    /// Familiar serving units documented for this food (e.g. "cup"), in the source's order.
+    /// Grams are always available in addition to these.
+    public var servingUnits: [ServingUnit]
 
-    public init(name: String, nutrientsPer100g: NutrientsPer100g, source: FoodSource) {
+    public init(
+        name: String,
+        nutrientsPer100g: NutrientsPer100g,
+        source: FoodSource,
+        servingUnits: [ServingUnit] = []
+    ) {
         self.name = name
         self.nutrientsPer100g = nutrientsPer100g
         self.source = source
+        self.servingUnits = servingUnits
     }
 
     public init(_ customFood: CustomFood) {
         self.init(name: customFood.name, nutrientsPer100g: customFood.nutrientsPer100g, source: .custom)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case name, nutrientsPer100g, source, servingUnits
+    }
+
+    /// Foods saved before serving units existed decode with none.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        nutrientsPer100g = try container.decode(NutrientsPer100g.self, forKey: .nutrientsPer100g)
+        source = try container.decode(FoodSource.self, forKey: .source)
+        servingUnits = try container.decodeIfPresent([ServingUnit].self, forKey: .servingUnits) ?? []
+    }
+}
+
+/// A familiar unit a food's portion can be expressed in (e.g. "cup", "slice"), with the gram weight its
+/// source documents for a stated quantity of it ("1 cup = 158 g"). When the source gives no gram weight
+/// (or no quantity basis), the conversion is unavailable: it is never guessed.
+public struct ServingUnit: Codable, Hashable, Sendable {
+    /// e.g. "cup" or "cup, chopped".
+    public var name: String
+    /// The number of units the gram weight is documented for, e.g. 1 (cup), or 0.5 for "0.5 cup = 79 g".
+    public var quantityBasis: Double?
+    /// Grams weighed by `quantityBasis` units, per the source.
+    public var gramWeight: Double?
+
+    public init(name: String, quantityBasis: Double?, gramWeight: Double?) {
+        self.name = name
+        self.quantityBasis = quantityBasis
+        self.gramWeight = gramWeight
+    }
+
+    /// Grams in one unit, or nil when the source does not document a usable conversion.
+    public var gramsPerUnit: Double? {
+        guard let quantityBasis, let gramWeight,
+              quantityBasis.isFinite, quantityBasis > 0, gramWeight.isFinite, gramWeight > 0
+        else { return nil }
+        return gramWeight / quantityBasis
     }
 }
 

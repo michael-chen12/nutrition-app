@@ -14,8 +14,30 @@ final class FoodDataCentralRecordTests: XCTestCase {
         XCTAssertEqual(food, Food(
             name: "Rice, white, long-grain, regular, enriched, cooked",
             nutrientsPer100g: NutrientsPer100g(calories: 130, protein: 2.69, carbohydrates: 28.17, fat: 0.28),
-            source: .documented(SourceReference(sourceName: "USDA FoodData Central", recordID: "168878"))
+            source: .documented(SourceReference(sourceName: "USDA FoodData Central", recordID: "168878")),
+            servingUnits: [ServingUnit(name: "cup", quantityBasis: 1, gramWeight: 158)]
         ))
+    }
+
+    func test_documentedFoodPortionsBecomeServingUnitsAndAMissingGramWeightIsKeptUnknown() throws {
+        let record = try JSONDecoder().decode(
+            FoodDataCentralRecord.self, from: Data(Self.foundationHummusRecord.utf8)
+        )
+
+        XCTAssertEqual(try record.food().servingUnits, [
+            ServingUnit(name: "cup, packed", quantityBasis: 1, gramWeight: 246),
+            ServingUnit(name: "tablespoon", quantityBasis: 2, gramWeight: 30),
+            ServingUnit(name: "container", quantityBasis: 1, gramWeight: 283),
+            ServingUnit(name: "scoop", quantityBasis: 1, gramWeight: nil),
+        ])
+    }
+
+    func test_recordWithoutFoodPortionsHasNoServingUnits() throws {
+        let response = try JSONDecoder().decode(
+            FoodDataCentralSearchResponse.self, from: Data(Self.riceSearchResponse.utf8)
+        )
+
+        XCTAssertEqual(response.suitableFoods().map(\.servingUnits), [[]])
     }
 
     func test_searchResponseYieldsOnlyRecordsWithAllFourNutrients() throws {
@@ -76,7 +98,10 @@ final class FoodDataCentralRecordTests: XCTestCase {
     """
 
     /// `GET /v1/food/321358` (Foundation, full format). Foundation records can report energy only via
-    /// Atwater general (2047) and specific (2048) factors. Values are illustrative.
+    /// Atwater general (2047) and specific (2048) factors. `foodPortions` cover a named measure unit with a
+    /// modifier, a quantity basis other than 1, an "undetermined" measure named by its modifier, a portion
+    /// without a gram weight, and an FNDDS-style portion with only a numeric code (no unit name).
+    /// Values are illustrative.
     static let foundationHummusRecord = """
     {
       "fdcId": 321358, "description": "Hummus, commercial", "dataType": "Foundation",
@@ -86,6 +111,18 @@ final class FoodDataCentralRecordTests: XCTestCase {
         { "type": "FoodNutrient", "nutrient": { "id": 1005, "number": "205", "name": "Carbohydrate, by difference", "unitName": "g" }, "amount": 14.9 },
         { "type": "FoodNutrient", "nutrient": { "id": 2047, "number": "957", "name": "Energy (Atwater General Factors)", "unitName": "kcal" }, "amount": 229 },
         { "type": "FoodNutrient", "nutrient": { "id": 2048, "number": "958", "name": "Energy (Atwater Specific Factors)", "unitName": "kcal" }, "amount": 222 }
+      ],
+      "foodPortions": [
+        { "id": 1, "amount": 1, "modifier": "packed", "gramWeight": 246, "sequenceNumber": 1,
+          "measureUnit": { "id": 1000, "name": "cup", "abbreviation": "cup" } },
+        { "id": 2, "amount": 2, "gramWeight": 30, "sequenceNumber": 2,
+          "measureUnit": { "id": 1001, "name": "tablespoon", "abbreviation": "tbsp" } },
+        { "id": 3, "amount": 1, "modifier": "container", "gramWeight": 283, "sequenceNumber": 3,
+          "measureUnit": { "id": 9999, "name": "undetermined", "abbreviation": "undetermined" } },
+        { "id": 4, "amount": 1, "modifier": "scoop", "sequenceNumber": 4,
+          "measureUnit": { "id": 9999, "name": "undetermined", "abbreviation": "undetermined" } },
+        { "id": 5, "modifier": "90000", "portionDescription": "Quantity not specified", "gramWeight": 246,
+          "sequenceNumber": 5, "measureUnit": { "id": 9999, "name": "undetermined", "abbreviation": "undetermined" } }
       ]
     }
     """

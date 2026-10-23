@@ -17,6 +17,43 @@ public struct FoodDataCentralRecord: Decodable, Hashable, Sendable {
     /// Branded foods only. When it is a volume ("ml" in the API, "MLT" in downloads), `foodNutrients`
     /// are per 100 mL instead of per 100 g.
     public var servingSizeUnit: String?
+    /// Documented household measures with their gram weight (Foundation, SR Legacy and Survey records).
+    public var foodPortions: [FoodPortion]?
+
+    /// One `foodPortions` entry: `amount` of a unit (named by `measureUnit`, or by `modifier` when the measure
+    /// unit is "undetermined") weighs `gramWeight` grams.
+    public struct FoodPortion: Decodable, Hashable, Sendable {
+        public var amount: Double?
+        public var modifier: String?
+        public var gramWeight: Double?
+        public var measureUnit: MeasureUnit?
+
+        public struct MeasureUnit: Decodable, Hashable, Sendable {
+            public var name: String?
+        }
+
+        /// The portion as a serving unit, or nil when it names no familiar unit (e.g. Survey records'
+        /// numeric modifier codes). A missing amount or gram weight is kept unknown, never filled in.
+        var servingUnit: ServingUnit? {
+            let measureName = measureUnit?.name.map(Self.trimmed).flatMap { $0.isEmpty ? nil : $0 }
+            let modifierText = modifier.map(Self.trimmed).flatMap { text -> String? in
+                text.isEmpty || Double(text) != nil ? nil : text
+            }
+            let name: String
+            if let measureName, measureName.lowercased() != "undetermined" {
+                name = modifierText.map { "\(measureName), \($0)" } ?? measureName
+            } else if let modifierText {
+                name = modifierText
+            } else {
+                return nil
+            }
+            return ServingUnit(name: name, quantityBasis: amount, gramWeight: gramWeight)
+        }
+
+        private static func trimmed(_ text: String) -> String {
+            text.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+    }
 
     /// One `foodNutrients` entry. Accepts both documented shapes: the full food format
     /// (`nutrient.id` + `amount`) and the search-result format (`nutrientId` + `value`).
@@ -58,7 +95,8 @@ public struct FoodDataCentralRecord: Decodable, Hashable, Sendable {
                 carbohydrates: try amount(ofFirstOf: [NutrientID.carbohydrateByDifference]),
                 fat: try amount(ofFirstOf: [NutrientID.totalFat])
             ),
-            source: .documented(SourceReference(sourceName: Self.sourceName, recordID: String(fdcId)))
+            source: .documented(SourceReference(sourceName: Self.sourceName, recordID: String(fdcId))),
+            servingUnits: (foodPortions ?? []).compactMap(\.servingUnit)
         )
     }
 
