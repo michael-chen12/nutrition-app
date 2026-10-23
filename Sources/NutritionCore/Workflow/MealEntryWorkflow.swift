@@ -4,13 +4,17 @@ import Foundation
 /// (start, import photos, add foods with portions, review, save) and serves meal history.
 /// Every decision lives here or below so it is covered by tests on any platform.
 public final class MealEntryWorkflow {
-    private let store: MealHistoryStore
-    private let gateway: MealAnalysisGateway
+    let store: MealHistoryStore
+    let gateway: MealAnalysisGateway
     private let now: () -> Date
     private let calendar: Calendar
 
-    private var draft: MealEntry?
-    private var draftPhotoData: [MealPhoto.ID: Data] = [:]
+    var draft: MealEntry?
+    var draftPhotoData: [MealPhoto.ID: Data] = [:]
+    /// Photo suggestions for the draft awaiting review (see PhotoSuggestionReview.swift).
+    var photoSuggestions: PhotoSuggestionState?
+    /// Whether the person accepted the photo analysis disclosure; nothing is uploaded before.
+    var photoAnalysisDisclosureAccepted = false
 
     /// - Parameter calendar: Decides which day a meal entry is assigned to (its calendar and time zone);
     ///   see `dailyMealHistory()`. The app passes the person's current calendar; tests pass a fixed one.
@@ -40,6 +44,7 @@ public final class MealEntryWorkflow {
     public func startNewMealEntry() {
         draft = MealEntry(date: now())
         draftPhotoData = [:]
+        photoSuggestions = nil
     }
 
     /// Adds an imported meal photo to the draft. It is retained locally when the meal entry is saved.
@@ -93,6 +98,7 @@ public final class MealEntryWorkflow {
         guard let entry = try store.mealEntry(id: id) else { throw MealEntryWorkflowError.mealEntryNotFound(id) }
         draft = entry
         draftPhotoData = [:]
+        photoSuggestions = nil
     }
 
     /// Changes the gram amount of a food in the draft (replacing any serving unit it was entered in).
@@ -162,6 +168,8 @@ public final class MealEntryWorkflow {
         try store.save(entry, photoData: draftPhotoData)
         draft = nil
         draftPhotoData = [:]
+        // Suggestions not accepted by now are not part of the meal entry.
+        photoSuggestions = nil
         return entry.id
     }
 
@@ -210,14 +218,21 @@ public final class MealEntryWorkflow {
         try addReviewedFood(food, portion: makePortion(quantity: grams, unit: .grams, for: food), shownIn: photoIDs)
     }
 
-    private func addReviewedFood(_ food: Food, portion: Portion, shownIn photoIDs: [MealPhoto.ID]) throws -> ReviewedFood.ID {
+    func addReviewedFood(
+        _ food: Food,
+        portion: Portion,
+        shownIn photoIDs: [MealPhoto.ID],
+        uncertaintyNotes: [UncertaintyNote] = []
+    ) throws -> ReviewedFood.ID {
         try requireDraftPhotos(photoIDs)
-        let reviewedFood = ReviewedFood(food: food, portion: portion, photoIDs: photoIDs.uniqued())
+        let reviewedFood = ReviewedFood(
+            food: food, portion: portion, uncertaintyNotes: uncertaintyNotes, photoIDs: photoIDs.uniqued()
+        )
         editDraft { $0.reviewedFoods.append(reviewedFood) }
         return reviewedFood.id
     }
 
-    private func makePortion(quantity: Double, unit: PortionUnit, for food: Food) throws -> Portion {
+    func makePortion(quantity: Double, unit: PortionUnit, for food: Food) throws -> Portion {
         switch unit {
         case .grams:
             guard quantity.isFinite, quantity > 0 else { throw MealEntryWorkflowError.invalidGramAmount }
@@ -239,7 +254,7 @@ public final class MealEntryWorkflow {
         change(&draft!)
     }
 
-    private func requireDraftPhotos(_ photoIDs: [MealPhoto.ID]) throws {
+    func requireDraftPhotos(_ photoIDs: [MealPhoto.ID]) throws {
         let draftPhotoIDs = Set(draft?.photos.map(\.id) ?? [])
         if let unknown = photoIDs.first(where: { !draftPhotoIDs.contains($0) }) {
             throw MealEntryWorkflowError.photoNotInMealEntry(unknown)
@@ -282,6 +297,12 @@ public enum MealEntryWorkflowError: Error, Equatable {
     case invalidServingQuantity
     /// The serving unit is not one documented for this food.
     case servingUnitNotAvailable(unitName: String)
+    /// Photos are uploaded for analysis only after the person accepts `photoAnalysisDisclosure`.
+    case photoAnalysisDisclosureNotAccepted
+    /// The referenced photo suggestion is not awaiting review (already accepted or rejected, or never made).
+    case suggestionNotFound(PresentedFoodSuggestion.ID)
+    /// The suggested portion cannot be converted for the chosen food without guessing; enter a portion instead.
+    case suggestedPortionUnavailable
 }
 
 extension Array where Element: Hashable {

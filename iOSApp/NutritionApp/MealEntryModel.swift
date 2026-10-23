@@ -22,12 +22,14 @@ final class MealEntryModel {
     func startNewMealEntry() {
         workflow.startNewMealEntry()
         draftReview = workflow.draftReview
+        photoAnalysis = workflow.photoSuggestionReview
     }
 
     /// Reopens a saved meal entry for review; saving replaces that same meal entry.
     func editMealEntry(_ id: MealEntry.ID) {
         perform { try workflow.editMealEntry(id: id) }
         draftReview = workflow.draftReview
+        photoAnalysis = workflow.photoSuggestionReview
     }
 
     func changePortion(of foodID: ReviewedFood.ID, grams: Double) {
@@ -103,7 +105,55 @@ final class MealEntryModel {
     func save() {
         perform { _ = try workflow.saveMealEntry() }
         draftReview = workflow.draftReview
+        photoAnalysis = workflow.photoSuggestionReview
         refreshHistory()
+    }
+
+    // MARK: Photo suggestions
+
+    /// Suggestions awaiting review and the latest analysis message; nil before any analysis.
+    private(set) var photoAnalysis: PhotoAnalysisPresentation?
+    private(set) var isAnalyzingPhoto = false
+
+    /// Shown before every upload; see `PhotoAnalysisDisclosureView`.
+    var photoAnalysisDisclosure: PhotoAnalysisDisclosure { workflow.photoAnalysisDisclosure }
+
+    /// The person accepted the disclosure for this photo: upload it and show the suggestions (or why there
+    /// are none, with the manual path still open).
+    func uploadForAnalysis(_ photoID: MealPhoto.ID) async {
+        workflow.acceptPhotoAnalysisDisclosure()
+        isAnalyzingPhoto = true
+        defer { isAnalyzingPhoto = false }
+        do {
+            photoAnalysis = try await workflow.analyzePhoto(photoID)
+            errorMessage = nil
+        } catch {
+            errorMessage = "This photo can't be analyzed. You can still add foods yourself."
+        }
+    }
+
+    func acceptSuggestion(_ id: PresentedFoodSuggestion.ID, as match: SuggestedFoodMatch) {
+        reviewSuggestion { _ = try workflow.acceptSuggestion(id, as: match) }
+    }
+
+    func acceptSuggestion(
+        _ id: PresentedFoodSuggestion.ID, as result: FoodSearchResult, quantity: Double, unit: PortionUnit
+    ) {
+        reviewSuggestion { _ = try workflow.acceptSuggestion(id, as: result, quantity: quantity, unit: unit) }
+    }
+
+    func acceptSuggestion(_ id: PresentedFoodSuggestion.ID, asCustomFood customFood: CustomFood, grams: Double) {
+        reviewSuggestion { _ = try workflow.acceptSuggestion(id, asCustomFood: customFood, grams: grams) }
+    }
+
+    func rejectSuggestion(_ id: PresentedFoodSuggestion.ID) {
+        reviewSuggestion { try workflow.rejectSuggestion(id) }
+    }
+
+    private func reviewSuggestion(_ action: () throws -> Void) {
+        perform(action)
+        draftReview = workflow.draftReview
+        photoAnalysis = workflow.photoSuggestionReview
     }
 
     func open(_ id: MealEntry.ID) -> MealEntryPresentation? {
@@ -126,6 +176,8 @@ final class MealEntryModel {
             errorMessage = "Enter a serving amount greater than zero."
         } catch MealEntryWorkflowError.servingConversionUnavailable(let unitName) {
             errorMessage = "No gram weight is documented for \(unitName). Enter grams instead."
+        } catch MealEntryWorkflowError.suggestedPortionUnavailable {
+            errorMessage = "The suggested portion can't be converted for this food. Enter a portion instead."
         } catch {
             errorMessage = "Something went wrong. Please try again."
         }

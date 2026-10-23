@@ -12,9 +12,12 @@ let package = Package(
     ],
     products: [
         .library(name: "NutritionCore", targets: ["NutritionCore"]),
+        // The wire contract shared by the app and the photo analysis backend (Backend/).
+        .library(name: "AnalysisContract", targets: ["AnalysisContract"]),
     ],
     targets: [
-        .target(name: "NutritionCore"),
+        .target(name: "AnalysisContract"),
+        .target(name: "NutritionCore", dependencies: ["AnalysisContract"]),
         .testTarget(name: "NutritionCoreTests", dependencies: ["NutritionCore"]),
     ]
 )

@@ -1,0 +1,148 @@
+import AnalysisContract
+import Foundation
+import MealPhotoAnalysis
+import XCTest
+
+/// Ticket #9: the backend's external contract. The app posts meal photos; the backend asks the hosted provider
+/// (Gemini) for structured suggestions and answers in the shared `AnalysisContract`. Provider replies are
+/// controlled fixtures: these tests never assert what a live model says.
+final class MealPhotoAnalysisContractTests: XCTestCase {
+    private func makeService(
+        _ transport: RecordingProviderTransport,
+        credential: ProviderCredential? = ProviderCredential(apiKey: Fixtures.testKey)
+    ) -> MealPhotoAnalysisService {
+        MealPhotoAnalysisService(credential: credential, transport: transport)
+    }
+
+    // MARK: Response shape
+
+    func test_structuredProviderOutputBecomesSuggestionsWithPortionsAndSpecificUncertainty() async throws {
+        let transport = RecordingProviderTransport(.response(
+            statusCode: 200, body: Fixtures.generateContentReply(modelText: Fixtures.riceAndChickenOutput)
+        ))
+
+        let reply = await makeService(transport).handle(requestBody: Fixtures.analysisRequestBody())
+
+        XCTAssertEqual(reply.statusCode, 200)
+        XCTAssertEqual(reply.contentType, "application/json")
+        let response = try JSONDecoder().decode(MealPhotoAnalysisResponse.self, from: reply.body)
+        XCTAssertEqual(response, MealPhotoAnalysisResponse(
+            suggestions: [
+                FoodSuggestion(
+                    id: "food-1",
+                    name: "Steamed white rice",
+                    searchQuery: "rice white cooked",
+                    photoIDs: [Fixtures.photoID],
+                    portion: PortionSuggestion(quantity: 1, unit: "cup", grams: 158)
+                ),
+                FoodSuggestion(
+                    id: "food-2",
+                    name: "Stir-fried chicken",
+                    searchQuery: "chicken breast cooked",
+                    photoIDs: [Fixtures.photoID],
+                    portion: PortionSuggestion(quantity: 120, unit: "g"),
+                    unresolvedDetails: [
+                        UnresolvedDetail(kind: .ingredient, detail: "Cooking oil not visible"),
+                        UnresolvedDetail(kind: .preparation, detail: "Sauce may contain added sugar"),
+                    ]
+                ),
+            ],
+            duplicateGroups: []
+        ))
+    }
+
+    func test_modelNutrientGuessesNeverReachTheApp() async throws {
+        let transport = RecordingProviderTransport(.response(
+            statusCode: 200, body: Fixtures.generateContentReply(modelText: Fixtures.riceAndChickenOutput)
+        ))
+
+        let reply = await makeService(transport).handle(requestBody: Fixtures.analysisRequestBody())
+
+        let json = String(decoding: reply.body, as: UTF8.self)
+        for nutrientWord in ["calories", "protein", "fat", "estimatedNutrients", "205", "240"] {
+            XCTAssertFalse(json.contains(nutrientWord), "Response leaked \(nutrientWord): \(json)")
+        }
+    }
+
+    func test_duplicateGroupHintsSurviveForCrossPhotoReview() async throws {
+        let secondPhotoID = "6F1A2B3C-0000-4000-8000-000000000002"
+        let output = """
+        {
+          "foods": [
+            { "id": "a", "name": "Pasta", "searchQuery": "pasta cooked", "photoIds": ["\(Fixtures.photoID)"],
+              "unresolvedDetails": [] },
+            { "id": "b", "name": "Pasta", "searchQuery": "pasta cooked", "photoIds": ["\(secondPhotoID)"],
+              "unresolvedDetails": [{ "kind": "portion", "detail": "Plate depth unclear" }] }
+          ],
+          "duplicateGroups": [ { "suggestionIds": ["a", "b"], "reason": "Same plate from two angles" } ]
+        }
+        """
+        let transport = RecordingProviderTransport(.response(
+            statusCode: 200, body: Fixtures.generateContentReply(modelText: output)
+        ))
+        let body = Fixtures.analysisRequestBody(photos: [
+            PhotoUpload(photoID: Fixtures.photoID, mediaType: "image/jpeg", imageData: Fixtures.jpegBytes),
+            PhotoUpload(photoID: secondPhotoID, mediaType: "image/png", imageData: Data([0x89, 0x50])),
+        ])
+
+        let reply = await makeService(transport).handle(requestBody: body)
+
+        XCTAssertEqual(reply.statusCode, 200)
+        let response = try JSONDecoder().decode(MealPhotoAnalysisResponse.self, from: reply.body)
+        XCTAssertEqual(response.suggestions.map(\.photoIDs), [[Fixtures.photoID], [secondPhotoID]])
+        XCTAssertNil(response.suggestions[0].portion)
+        XCTAssertEqual(
+            response.duplicateGroups,
+            [DuplicateGroupHint(suggestionIDs: ["a", "b"], reason: "Same plate from two angles")]
+        )
+    }
+
+    // MARK: Provider request
+
+    func test_providerRequestSendsThePhotoInlineAndAsksForStructuredSuggestionsWithoutNutrients() async throws {
+        let transport = RecordingProviderTransport(.response(
+            statusCode: 200, body: Fixtures.generateContentReply(modelText: Fixtures.riceAndChickenOutput)
+        ))
+
+        _ = await makeService(transport).handle(requestBody: Fixtures.analysisRequestBody())
+
+        let sent = try XCTUnwrap(transport.sentRequests.first)
+        XCTAssertEqual(transport.sentRequests.count, 1)
+        XCTAssertEqual(sent.method, "POST")
+        XCTAssertEqual(
+            sent.url.absoluteString,
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+        )
+        XCTAssertEqual(sent.headers["Content-Type"], "application/json")
+
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: sent.body) as? [String: Any])
+        let parts = try XCTUnwrap(((body["contents"] as? [[String: Any]])?.first?["parts"]) as? [[String: Any]])
+        let inlineData = try XCTUnwrap(parts.compactMap { $0["inline_data"] as? [String: Any] }.first)
+        XCTAssertEqual(inlineData["mime_type"] as? String, "image/jpeg")
+        XCTAssertEqual(inlineData["data"] as? String, Fixtures.jpegBytes.base64EncodedString())
+        let prompt = parts.compactMap { $0["text"] as? String }.joined(separator: "\n")
+        XCTAssertTrue(prompt.contains(Fixtures.photoID), "The prompt labels each photo with its ID")
+
+        let generationConfig = try XCTUnwrap(body["generationConfig"] as? [String: Any])
+        XCTAssertEqual(generationConfig["responseMimeType"] as? String, "application/json")
+        let schema = try XCTUnwrap(generationConfig["responseSchema"] as? [String: Any])
+        let schemaText = String(decoding: try JSONSerialization.data(withJSONObject: schema), as: UTF8.self)
+        for field in ["foods", "searchQuery", "photoIds", "portion", "unresolvedDetails", "duplicateGroups"] {
+            XCTAssertTrue(schemaText.contains("\"\(field)\""), "Schema asks for \(field)")
+        }
+        XCTAssertFalse(schemaText.lowercased().contains("calorie"), "Schema never asks for nutrient values")
+    }
+
+    func test_modelNameAndKeyComeFromTheBackendEnvironment() {
+        let configuration = GeminiConfiguration(environment: [
+            "GEMINI_API_KEY": Fixtures.testKey,
+            "GEMINI_MODEL": "gemini-2.5-flash-lite",
+        ])
+
+        XCTAssertEqual(configuration.model, "gemini-2.5-flash-lite")
+        XCTAssertNotNil(configuration.credential)
+        XCTAssertEqual(GeminiConfiguration(environment: [:]).model, "gemini-2.5-flash")
+        XCTAssertNil(GeminiConfiguration(environment: [:]).credential)
+        XCTAssertNil(GeminiConfiguration(environment: ["GEMINI_API_KEY": "  "]).credential)
+    }
+}

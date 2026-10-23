@@ -1,0 +1,40 @@
+// Thin HTTP server for meal photo analysis. Every decision lives in `MealPhotoAnalysisService`; this file only
+// moves bytes between HTTP and the service. Not built on Windows (see Package.swift).
+//
+// Environment: GEMINI_API_KEY (required for analysis; never logged), GEMINI_MODEL (optional), PORT (default 8080),
+// HOST (default 127.0.0.1, so the development backend is reachable only from this machine).
+
+import AnalysisContract
+import Foundation
+import Hummingbird
+import MealPhotoAnalysis
+import NIOCore
+
+let environment = ProcessInfo.processInfo.environment
+let configuration = GeminiConfiguration(environment: environment)
+let service = MealPhotoAnalysisService(configuration: configuration, transport: URLSessionProviderTransport())
+
+if configuration.credential == nil {
+    print("GEMINI_API_KEY is not set: photo analysis requests will be answered with notConfigured.")
+}
+print("Using Gemini model \(configuration.model). Re-verify the model, quota and terms in the developer account.")
+
+let router = Router()
+router.post(RouterPath(stringLiteral: MealPhotoAnalysisEndpoint.path)) { request, _ -> Response in
+    // Slightly above the service's image limit so oversized uploads get its clear error message.
+    let body = try await request.body.collect(upTo: MealPhotoAnalysisService.maximumTotalImageBytes * 2)
+    let reply = await service.handle(requestBody: Data(body.readableBytesView))
+    return Response(
+        status: HTTPResponse.Status(code: reply.statusCode),
+        headers: [.contentType: reply.contentType],
+        body: ResponseBody(byteBuffer: ByteBuffer(bytes: reply.body))
+    )
+}
+
+let app = Application(
+    router: router,
+    configuration: ApplicationConfiguration(
+        address: .hostname(environment["HOST"] ?? "127.0.0.1", port: Int(environment["PORT"] ?? "") ?? 8080)
+    )
+)
+try await app.runService()

@@ -36,6 +36,9 @@ struct NewMealEntryView: View {
                 } footer: {
                     Text("Add other angles and every dish in the meal.")
                 }
+                if let photos = model.draftReview?.photos, !photos.isEmpty {
+                    PhotoSuggestionsSection(model: model, photos: photos)
+                }
                 Section("Find a documented food") {
                     TextField("Search foods", text: $searchQuery)
                         .submitLabel(.search)
