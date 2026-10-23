@@ -23,6 +23,22 @@ final class MealEntryModel {
         draftReview = workflow.draftReview
     }
 
+    /// Reopens a saved meal entry for review; saving replaces that same meal entry.
+    func editMealEntry(_ id: MealEntry.ID) {
+        perform { try workflow.editMealEntry(id: id) }
+        draftReview = workflow.draftReview
+    }
+
+    func changePortion(of foodID: ReviewedFood.ID, grams: Double) {
+        perform { try workflow.changePortion(of: foodID, grams: grams) }
+        draftReview = workflow.draftReview
+    }
+
+    func removeFood(_ foodID: ReviewedFood.ID) {
+        perform { try workflow.removeFood(foodID) }
+        draftReview = workflow.draftReview
+    }
+
     func importPhoto(_ data: Data, fileExtension: String) {
         workflow.importPhoto(data, fileExtension: fileExtension)
         draftReview = workflow.draftReview

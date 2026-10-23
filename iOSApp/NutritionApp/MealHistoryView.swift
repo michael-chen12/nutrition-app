@@ -18,9 +18,7 @@ struct MealHistoryView: View {
             }
             .navigationTitle("Meal history")
             .navigationDestination(for: MealEntry.ID.self) { id in
-                if let entry = model.open(id) {
-                    MealEntryDetailView(entry: entry)
-                }
+                MealEntryDetailView(model: model, id: id)
             }
             .toolbar {
                 Button("New meal entry", systemImage: "plus") {
@@ -36,19 +34,41 @@ struct MealHistoryView: View {
 }
 
 struct MealEntryDetailView: View {
-    let entry: MealEntryPresentation
+    @Bindable var model: MealEntryModel
+    let id: MealEntry.ID
+    @State private var entry: MealEntryPresentation?
+    @State private var isEditing = false
 
     var body: some View {
-        List {
-            Section { MealPhotosView(photos: entry.photos) }
-            Section("Pictured food") {
-                ForEach(entry.foods) { ReviewedFoodRow(food: $0) }
-            }
-            Section {
-                NutritionEstimateView(estimate: entry.nutritionEstimate)
-                PicturedFoodNoteView(note: entry.picturedFoodNote)
+        Group {
+            if let entry {
+                List {
+                    Section { MealPhotosView(photos: entry.photos) }
+                    Section("Pictured food") {
+                        ForEach(entry.foods) { ReviewedFoodRow(food: $0) }
+                    }
+                    Section {
+                        NutritionEstimateView(estimate: entry.nutritionEstimate)
+                        PicturedFoodNoteView(note: entry.picturedFoodNote)
+                    }
+                }
+                .navigationTitle(Text(entry.date, format: .dateTime.day().month().hour().minute()))
             }
         }
-        .navigationTitle(Text(entry.date, format: .dateTime.day().month().hour().minute()))
+        .toolbar {
+            Button("Edit") {
+                model.editMealEntry(id)
+                isEditing = model.draftReview != nil
+            }
+        }
+        .sheet(isPresented: $isEditing, onDismiss: reload) {
+            NewMealEntryView(model: model, isPresented: $isEditing, title: "Edit meal entry")
+        }
+        .onAppear(perform: reload)
+    }
+
+    /// Shows the saved meal entry as it now is, including any edits just saved.
+    private func reload() {
+        entry = model.open(id)
     }
 }

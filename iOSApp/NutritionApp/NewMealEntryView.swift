@@ -5,6 +5,8 @@ import SwiftUI
 struct NewMealEntryView: View {
     @Bindable var model: MealEntryModel
     @Binding var isPresented: Bool
+    /// "New meal entry", or "Edit meal entry" when a saved meal entry was reopened for review.
+    var title = "New meal entry"
 
     @State private var photoSelection: [PhotosPickerItem] = []
     @State private var foodName = ""
@@ -19,6 +21,8 @@ struct NewMealEntryView: View {
     @State private var foodPhotoIDs: Set<MealPhoto.ID> = []
     @State private var photoCapture: MealPhotoCaptureModel?
     @State private var isPickingFromLibrary = false
+    @State private var portionFoodID: ReviewedFood.ID?
+    @State private var portionGrams: Double?
 
     var body: some View {
         NavigationStack {
@@ -78,12 +82,22 @@ struct NewMealEntryView: View {
                 if let review = model.draftReview, !review.foods.isEmpty {
                     Section {
                         ForEach(review.foods) { food in
-                            ReviewedFoodRow(food: food).contextMenu { repeatedViewActions(for: food, in: review) }
+                            ReviewedFoodRow(food: food)
+                                .contextMenu {
+                                    Button("Change portion") {
+                                        portionFoodID = food.id
+                                        portionGrams = nil
+                                    }
+                                    repeatedViewActions(for: food, in: review)
+                                }
+                                .swipeActions {
+                                    Button("Remove", role: .destructive) { model.removeFood(food.id) }
+                                }
                         }
                     } header: {
                         Text("Pictured food")
                     } footer: {
-                        Text("Same food in another photo? Long-press it to note the photo or combine repeats.")
+                        Text("Long-press a food to change its portion or note it in another photo. Swipe to remove it.")
                     }
                     Section {
                         NutritionEstimateView(estimate: review.nutritionEstimate)
@@ -94,7 +108,7 @@ struct NewMealEntryView: View {
                     Text(message).foregroundStyle(.red)
                 }
             }
-            .navigationTitle("New meal entry")
+            .navigationTitle(title)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { isPresented = false } }
                 ToolbarItem(placement: .confirmationAction) {
@@ -112,6 +126,19 @@ struct NewMealEntryView: View {
                 }
             }
             .photosPicker(isPresented: $isPickingFromLibrary, selection: $photoSelection, matching: .images)
+            .alert("Change portion", isPresented: Binding(
+                get: { portionFoodID != nil },
+                set: { if !$0 { portionFoodID = nil } }
+            )) {
+                TextField("Amount (g)", value: $portionGrams, format: .number).keyboardType(.decimalPad)
+                Button("Cancel", role: .cancel) { portionFoodID = nil }
+                Button("Change") {
+                    if let portionFoodID, let portionGrams {
+                        model.changePortion(of: portionFoodID, grams: portionGrams)
+                    }
+                    portionFoodID = nil
+                }
+            }
             .onChange(of: photoSelection) { _, items in
                 guard !items.isEmpty else { return }
                 photoSelection = []

@@ -22,7 +22,8 @@ public final class MealEntryWorkflow {
     /// The meal entry under review, as the person sees it; nil when no meal entry is in progress.
     public var draftReview: MealEntryPresentation? {
         draft.map { entry in
-            present(entry) { photo in draftPhotoData[photo.id] ?? Data() }
+            // Photos of a reopened saved meal entry are already held by the store.
+            present(entry) { photo in draftPhotoData[photo.id] ?? (try? store.photoData(for: photo)) ?? Data() }
         }
     }
 
@@ -61,6 +62,28 @@ public final class MealEntryWorkflow {
         shownIn photoIDs: [MealPhoto.ID] = []
     ) throws -> ReviewedFood.ID {
         try addReviewedFood(searchResult.food, grams: grams, shownIn: photoIDs)
+    }
+
+    /// Reopens a saved meal entry for review, discarding any unsaved draft. Its meal photos, reviewed foods,
+    /// uncertainty notes and source references come along; saving replaces the same meal entry (same
+    /// identity, same date) with a nutrition estimate recalculated from its foods at that time.
+    public func editMealEntry(id: MealEntry.ID) throws {
+        guard let entry = try store.mealEntry(id: id) else { throw MealEntryWorkflowError.mealEntryNotFound(id) }
+        draft = entry
+        draftPhotoData = [:]
+    }
+
+    /// Changes the gram amount of a food in the draft. Its nutrition estimate follows the new portion.
+    public func changePortion(of foodID: ReviewedFood.ID, grams: Double) throws {
+        guard grams.isFinite, grams > 0 else { throw MealEntryWorkflowError.invalidGramAmount }
+        let index = try draftFoodIndex(foodID)
+        editDraft { $0.reviewedFoods[index].portion.grams = grams }
+    }
+
+    /// Removes a food from the draft; it no longer counts toward the nutrition estimate.
+    public func removeFood(_ foodID: ReviewedFood.ID) throws {
+        let index = try draftFoodIndex(foodID)
+        editDraft { _ = $0.reviewedFoods.remove(at: index) }
     }
 
     /// Records that a food already in the draft is also visible in another meal photo (a repeated view,
