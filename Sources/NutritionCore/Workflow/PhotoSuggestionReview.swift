@@ -123,7 +123,7 @@ extension MealEntryWorkflow {
             for (suggestion, suggestionPhotoIDs) in suggestions {
                 lookedUp.append(await lookUp(suggestion, photoIDs: suggestionPhotoIDs, cache: &matchesByQuery))
             }
-            newSuggestions = try Self.groupingLikelyDuplicates(lookedUp, hints: response.duplicateGroups)
+            newSuggestions = Self.groupingLikelyDuplicates(lookedUp, hints: response.duplicateGroups)
             if newSuggestions.isEmpty { message = PhotoAnalysisMessage.noFoodFound }
         } catch MealAnalysisGatewayError.malformedAnalysis {
             message = PhotoAnalysisMessage.malformed
@@ -166,12 +166,12 @@ extension MealEntryWorkflow {
     /// Joins suggestions the analysis hints are the same food seen in different photos into one suggestion
     /// that keeps its views, so it counts once until the person separates it. Overlapping hints join into
     /// one group. A hint that would join suggestions seen in the same photo is not followed: one photo showing
-    /// two of a food shows two foods. A hint naming a suggestion that is not listed exactly once does not fit
-    /// the contract.
+    /// two of a food shows two foods. A hint naming a suggestion that is not listed exactly once is ignored; the
+    /// suggestions it names are still reviewed on their own.
     static func groupingLikelyDuplicates(
         _ suggestions: [PendingSuggestion],
         hints: [DuplicateGroupHint]
-    ) throws -> [PendingSuggestion] {
+    ) -> [PendingSuggestion] {
         guard !hints.isEmpty else { return suggestions }
         var indicesByID: [String: [Int]] = [:]
         for (index, pending) in suggestions.enumerated() { indicesByID[pending.suggestion.id, default: []].append(index) }
@@ -179,12 +179,10 @@ extension MealEntryWorkflow {
         // Groups of suggestion indices in review order, each with the first reason given for it.
         var groups: [(members: [Int], reason: String?)] = suggestions.indices.map { ([$0], nil) }
         for hint in hints {
-            let members = try hint.suggestionIDs.map { id -> Int in
-                guard let indices = indicesByID[id], indices.count == 1 else {
-                    throw MealAnalysisGatewayError.malformedAnalysis
-                }
-                return indices[0]
+            let members = hint.suggestionIDs.compactMap { id in
+                indicesByID[id].flatMap { $0.count == 1 ? $0[0] : nil }
             }
+            guard members.count == hint.suggestionIDs.count else { continue }
             let slots = Set(members.map { member in groups.firstIndex { $0.members.contains(member) }! }).sorted()
             guard slots.count > 1 else { continue }
             let joined = slots.flatMap { groups[$0].members }.sorted()

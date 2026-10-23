@@ -225,14 +225,26 @@ final class ReconcileSuggestionsAcrossPhotosFeatureTests: XCTestCase {
 
     // MARK: Failures
 
+    func test_aDuplicateHintThatNamesNoListedFoodIsIgnoredAndEverySuggestionIsKept() async throws {
+        let workflow = makeWorkflow()
+        let (above, side, third) = importMealPhotos(workflow)
+        var analysis = crossPhotoAnalysis(above, side, third)
+        analysis.duplicateGroups.insert(DuplicateGroupHint(suggestionIDs: ["pasta-above", "salad"]), at: 0)
+        gateway.photoAnalysisResult = .success(analysis)
+
+        let review = try await workflow.analyzePhotos([above, side, third])
+
+        XCTAssertNil(review.message)
+        XCTAssertEqual(review.suggestions.map(\.name), ["Pasta with tomato sauce", "Shared bread basket", "Leftover french fries"])
+        XCTAssertEqual(review.suggestions.map(\.shownIn), ["Photos 1 and 2", "Photo 3", "Photo 3"], "Valid hints still apply")
+    }
+
     func test_failedMultiPhotoAnalysisLeavesEveryPhotoForManualEntry() async throws {
         let workflow = makeWorkflow()
         let (above, side, third) = importMealPhotos(workflow)
         let photos = [above, side, third]
 
-        var hintNamesAnUnlistedFood = crossPhotoAnalysis(above, side, third)
-        hintNamesAnUnlistedFood.duplicateGroups = [DuplicateGroupHint(suggestionIDs: ["pasta-above", "salad"])]
-        gateway.photoAnalysisResult = .success(hintNamesAnUnlistedFood)
+        gateway.photoAnalysisResult = .failure(MealAnalysisGatewayError.malformedAnalysis)
         let malformed = try await workflow.analyzePhotos(photos)
         XCTAssertEqual(malformed.suggestions, [])
         XCTAssertEqual(malformed.message, "Photo analysis returned results the app couldn't use. Your photos are "
