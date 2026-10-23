@@ -56,7 +56,7 @@ final class MealEntryModel {
     /// A camera capture that adds its photo to this draft meal entry, the same way as an imported photo.
     func makePhotoCapture() -> MealPhotoCaptureModel {
         let camera = AVFoundationMealPhotoCamera()
-        return MealPhotoCaptureModel(camera: camera, capture: MealPhotoCapture(camera: camera, mealEntry: workflow))
+        return MealPhotoCaptureModel(camera: camera, capture: MealPhotoCapture(camera: camera, workflow: workflow))
     }
 
     /// Republishes the draft after the camera capture closes.

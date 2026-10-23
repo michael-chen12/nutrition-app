@@ -166,7 +166,7 @@ final class ClarifyMixedDishesFeatureTests: XCTestCase {
         XCTAssertEqual(saved.nutritionEstimate.calories, "530 kcal")
         XCTAssertEqual(saved.nutritionEstimate.carbohydrates, "102 g")
         let historyRow = try XCTUnwrap(secondLaunch.dailyMealHistory().first?.mealEntries.first)
-        XCTAssertTrue(historyRow.hasUnresolvedUncertainty)
+        XCTAssertTrue(historyRow.hasUncertaintyFlag)
 
         // Answered later by editing the saved meal entry.
         try secondLaunch.editMealEntry(id: id)
@@ -176,7 +176,7 @@ final class ClarifyMixedDishesFeatureTests: XCTestCase {
         XCTAssertEqual(resolved.focusedQuestions, [])
         XCTAssertNil(resolved.uncertaintySummary)
         XCTAssertEqual(resolved.nutritionEstimate.calories, "530 kcal")
-        XCTAssertFalse(try XCTUnwrap(secondLaunch.dailyMealHistory().flatMap(\.mealEntries).first).hasUnresolvedUncertainty)
+        XCTAssertFalse(try XCTUnwrap(secondLaunch.dailyMealHistory().flatMap(\.mealEntries).first).hasUncertaintyFlag)
     }
 
     func test_aQuestionCanBeAnsweredOnlyOnce() async throws {

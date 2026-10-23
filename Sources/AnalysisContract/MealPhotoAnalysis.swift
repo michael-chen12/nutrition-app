@@ -1,10 +1,10 @@
 import Foundation
 
-// The wire contract between the iPhone app and the meal photo analysis backend (Backend/).
-// Codable values only, encoded as JSON. Both sides compile against these types.
+// The wire contract between the iPhone app and the backend (Backend/): meal photo analysis here, food search in
+// FoodSearch.swift. Codable values only, encoded as JSON. Both sides compile against these types.
 //
-// The contract carries suggestions to review, never nutrition facts: it has no nutrient values. Nutrients come
-// only from documented nutrition sources or custom foods once the person has reviewed a suggestion.
+// Photo analysis carries suggestions to review and no nutrient values: a nutrition estimate is calculated only
+// from documented foods or custom foods once the person has reviewed a suggestion.
 //
 // Extending it: new fields must be optional (or decode with a default) so an older app or backend still
 // decodes newer messages. Multi-photo reconciliation reads `duplicateGroups`; focused questions about mixed
@@ -42,7 +42,7 @@ public struct PhotoUpload: Codable, Hashable, Sendable {
     }
 }
 
-/// What the analysis suggests about the pictured food: candidates to review, not nutrition facts.
+/// What the analysis suggests about the pictured food: candidates to review, with no nutrient values.
 public struct MealPhotoAnalysisResponse: Codable, Hashable, Sendable {
     /// Each distinct pictured food the analysis found, including shared food and leftovers.
     public var suggestions: [FoodSuggestion]

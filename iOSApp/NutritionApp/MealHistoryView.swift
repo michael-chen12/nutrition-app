@@ -16,7 +16,7 @@ struct MealHistoryView: View {
                                 Text(row.date, format: .dateTime.hour().minute())
                                 Text(row.foodNames.joined(separator: ", ")).font(.subheadline)
                                 Text("≈ \(row.nutritionEstimate.calories)").font(.caption).foregroundStyle(.secondary)
-                                if row.hasUnresolvedUncertainty {
+                                if row.hasUncertaintyFlag {
                                     Label("Has unresolved details", systemImage: "questionmark.circle")
                                         .font(.caption).foregroundStyle(.orange)
                                 }

@@ -176,7 +176,7 @@ public struct MealHistoryRow: Hashable, Identifiable, Sendable {
     public var foodNames: [String]
     public var nutritionEstimate: PresentedNutritionEstimate
     /// The meal entry's uncertainty flag: some detail is still unresolved, so its estimate may be off.
-    public var hasUnresolvedUncertainty = false
+    public var hasUncertaintyFlag = false
 }
 
 extension MealHistoryRow {
@@ -187,7 +187,7 @@ extension MealHistoryRow {
             foodNames: entry.reviewedFoods.map(\.food.name),
             nutritionEstimate: PresentedNutritionEstimate(entry.nutritionEstimate)
         )
-        hasUnresolvedUncertainty = entry.reviewedFoods.contains { !$0.uncertaintyNotes.isEmpty }
+        hasUncertaintyFlag = entry.reviewedFoods.contains { !$0.uncertaintyNotes.isEmpty }
     }
 }
 

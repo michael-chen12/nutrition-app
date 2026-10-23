@@ -26,28 +26,28 @@ final class CaptureMealPhotoFeatureTests: XCTestCase {
     func test_capturedMealPhotoIsReviewedSavedAndReopenedFromMealHistoryAfterRelaunch() async throws {
         let camera = FakeMealPhotoCamera(authorizationStatus: .authorized)
         camera.photosToCapture = [plateShot]
-        let mealEntry = MealEntryWorkflow(
+        let workflow = MealEntryWorkflow(
             store: try FileMealHistoryStore(directory: directory.url),
             gateway: FakeMealAnalysisGateway(),
             now: { self.mealTime }
         )
-        mealEntry.startNewMealEntry()
-        let capture = MealPhotoCapture(camera: camera, mealEntry: mealEntry)
+        workflow.startNewMealEntry()
+        let capture = MealPhotoCapture(camera: camera, workflow: workflow)
 
         await capture.open()
         XCTAssertEqual(capture.step, .viewfinder)
 
         await capture.takePhoto()
         XCTAssertEqual(capture.step, .reviewing(plateShot))
-        XCTAssertEqual(mealEntry.draftReview?.photos, [], "A photo under review is not yet part of the meal entry")
+        XCTAssertEqual(workflow.draftReview?.photos, [], "A photo under review is not yet part of the meal entry")
 
         capture.usePhoto()
         XCTAssertEqual(capture.step, .finished)
-        XCTAssertEqual(mealEntry.draftReview?.photos.map(\.imageData), [plateShot.imageData])
+        XCTAssertEqual(workflow.draftReview?.photos.map(\.imageData), [plateShot.imageData])
 
-        try mealEntry.addCustomFood(dumplings, grams: 180)
-        assertShowsDumplingEstimate(try XCTUnwrap(mealEntry.draftReview).nutritionEstimate)
-        try mealEntry.saveMealEntry()
+        try workflow.addCustomFood(dumplings, grams: 180)
+        assertShowsDumplingEstimate(try XCTUnwrap(workflow.draftReview).nutritionEstimate)
+        try workflow.saveMealEntry()
 
         let relaunched = MealEntryWorkflow(
             store: try FileMealHistoryStore(directory: directory.url),
@@ -65,7 +65,7 @@ final class CaptureMealPhotoFeatureTests: XCTestCase {
     func test_firstUseAsksForCameraAccessAndOpensTheViewfinderWhenAllowed() async {
         let camera = FakeMealPhotoCamera(authorizationStatus: .notDetermined)
         camera.grantsAccessWhenAsked = true
-        let capture = MealPhotoCapture(camera: camera, mealEntry: newMealEntry())
+        let capture = MealPhotoCapture(camera: camera, workflow: newWorkflow())
 
         await capture.open()
 
@@ -75,8 +75,8 @@ final class CaptureMealPhotoFeatureTests: XCTestCase {
 
     func test_deniedCameraAccessExplainsHowToAllowItAndOffersThePhotoLibraryInstead() async throws {
         let camera = FakeMealPhotoCamera(authorizationStatus: .denied)
-        let mealEntry = newMealEntry()
-        let capture = MealPhotoCapture(camera: camera, mealEntry: mealEntry)
+        let workflow = newWorkflow()
+        let capture = MealPhotoCapture(camera: camera, workflow: workflow)
 
         await capture.open()
 
@@ -98,16 +98,16 @@ final class CaptureMealPhotoFeatureTests: XCTestCase {
 
         // The person continues with an imported meal photo instead.
         let libraryPhoto = Data([0x89, 0x50, 0x4E, 0x47])
-        mealEntry.importPhoto(libraryPhoto, fileExtension: "png")
-        try mealEntry.addCustomFood(dumplings, grams: 180)
-        let id = try mealEntry.saveMealEntry()
-        XCTAssertEqual(try mealEntry.openMealEntry(id: id).photos.map(\.imageData), [libraryPhoto])
+        workflow.importPhoto(libraryPhoto, fileExtension: "png")
+        try workflow.addCustomFood(dumplings, grams: 180)
+        let id = try workflow.saveMealEntry()
+        XCTAssertEqual(try workflow.openMealEntry(id: id).photos.map(\.imageData), [libraryPhoto])
     }
 
     func test_decliningTheCameraAccessPromptExplainsHowToAllowIt() async {
         let camera = FakeMealPhotoCamera(authorizationStatus: .notDetermined)
         camera.grantsAccessWhenAsked = false
-        let capture = MealPhotoCapture(camera: camera, mealEntry: newMealEntry())
+        let capture = MealPhotoCapture(camera: camera, workflow: newWorkflow())
 
         await capture.open()
 
@@ -122,7 +122,7 @@ final class CaptureMealPhotoFeatureTests: XCTestCase {
 
     func test_restrictedCameraAccessOffersOnlyThePhotoLibrary() async {
         let camera = FakeMealPhotoCamera(authorizationStatus: .restricted)
-        let capture = MealPhotoCapture(camera: camera, mealEntry: newMealEntry())
+        let capture = MealPhotoCapture(camera: camera, workflow: newWorkflow())
 
         await capture.open()
 
@@ -144,26 +144,26 @@ final class CaptureMealPhotoFeatureTests: XCTestCase {
         let blurry = CapturedMealPhoto(imageData: Data([0x01, 0x01]), fileExtension: "jpg")
         let camera = FakeMealPhotoCamera(authorizationStatus: .authorized)
         camera.photosToCapture = [blurry, plateShot]
-        let mealEntry = newMealEntry()
-        let capture = MealPhotoCapture(camera: camera, mealEntry: mealEntry)
+        let workflow = newWorkflow()
+        let capture = MealPhotoCapture(camera: camera, workflow: workflow)
         await capture.open()
 
         await capture.takePhoto()
         XCTAssertEqual(capture.step, .reviewing(blurry))
         capture.retake()
         XCTAssertEqual(capture.step, .viewfinder)
-        XCTAssertEqual(mealEntry.draftReview?.photos, [])
+        XCTAssertEqual(workflow.draftReview?.photos, [])
 
         await capture.takePhoto()
         capture.usePhoto()
 
-        XCTAssertEqual(mealEntry.draftReview?.photos.map(\.imageData), [plateShot.imageData])
+        XCTAssertEqual(workflow.draftReview?.photos.map(\.imageData), [plateShot.imageData])
     }
 
     func test_aFailedCaptureKeepsTheViewfinderOpenAndAsksThePersonToTryAgain() async {
         let camera = FakeMealPhotoCamera(authorizationStatus: .authorized)
         camera.photosToCapture = []
-        let capture = MealPhotoCapture(camera: camera, mealEntry: newMealEntry())
+        let capture = MealPhotoCapture(camera: camera, workflow: newWorkflow())
         await capture.open()
 
         await capture.takePhoto()
@@ -181,7 +181,7 @@ final class CaptureMealPhotoFeatureTests: XCTestCase {
     func test_aDeviceWithoutACameraOffersThePhotoLibraryWithoutAskingForAccess() async {
         let camera = FakeMealPhotoCamera(authorizationStatus: .notDetermined)
         camera.hasCamera = false
-        let capture = MealPhotoCapture(camera: camera, mealEntry: newMealEntry())
+        let capture = MealPhotoCapture(camera: camera, workflow: newWorkflow())
 
         await capture.open()
 
@@ -198,7 +198,7 @@ final class CaptureMealPhotoFeatureTests: XCTestCase {
         XCTAssertEqual(explanation.photoLibraryActionTitle, "Import from Photo Library")
     }
 
-    private func newMealEntry() -> MealEntryWorkflow {
+    private func newWorkflow() -> MealEntryWorkflow {
         let workflow = MealEntryWorkflow(store: InMemoryMealHistoryStore(), gateway: FakeMealAnalysisGateway())
         workflow.startNewMealEntry()
         return workflow

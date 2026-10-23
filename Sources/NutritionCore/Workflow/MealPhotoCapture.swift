@@ -7,14 +7,14 @@ import Foundation
 /// photo library instead.
 public final class MealPhotoCapture {
     private let camera: MealPhotoCamera
-    private let mealEntry: MealEntryWorkflow
+    private let workflow: MealEntryWorkflow
 
     /// Where the person is in the capture flow.
     public private(set) var step: MealPhotoCaptureStep = .notStarted
 
-    public init(camera: MealPhotoCamera, mealEntry: MealEntryWorkflow) {
+    public init(camera: MealPhotoCamera, workflow: MealEntryWorkflow) {
         self.camera = camera
-        self.mealEntry = mealEntry
+        self.workflow = workflow
     }
 
     /// Opens the camera, asking for camera access first if the person has not been asked yet.
@@ -60,7 +60,7 @@ public final class MealPhotoCapture {
     /// Adds the photo under review to the draft meal entry, exactly as an imported meal photo.
     public func usePhoto() {
         guard case .reviewing(let photo) = step else { return }
-        mealEntry.importPhoto(photo.imageData, fileExtension: photo.fileExtension)
+        workflow.importPhoto(photo.imageData, fileExtension: photo.fileExtension)
         step = .finished
     }
 
