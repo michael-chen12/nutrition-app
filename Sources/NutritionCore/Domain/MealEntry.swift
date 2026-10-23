@@ -4,7 +4,8 @@ import Foundation
 /// Its nutrition estimate is always calculated from the reviewed foods, never stored separately.
 public struct MealEntry: Codable, Hashable, Identifiable, Sendable {
     public var id: UUID
-    /// When the meal was recorded; the meal entry is assigned to this date's day.
+    /// When the meal was recorded; the meal entry is assigned to the calendar day containing this date in
+    /// the person's calendar and time zone (see `MealEntryWorkflow.dailyMealHistory()`). Editing keeps it.
     public var date: Date
     public var photos: [MealPhoto]
     /// The pictured food after review. Each food counts once regardless of how many photos show it.

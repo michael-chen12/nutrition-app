@@ -7,14 +7,23 @@ public final class MealEntryWorkflow {
     private let store: MealHistoryStore
     private let gateway: MealAnalysisGateway
     private let now: () -> Date
+    private let calendar: Calendar
 
     private var draft: MealEntry?
     private var draftPhotoData: [MealPhoto.ID: Data] = [:]
 
-    public init(store: MealHistoryStore, gateway: MealAnalysisGateway, now: @escaping () -> Date = Date.init) {
+    /// - Parameter calendar: Decides which day a meal entry is assigned to (its calendar and time zone);
+    ///   see `dailyMealHistory()`. The app passes the person's current calendar; tests pass a fixed one.
+    public init(
+        store: MealHistoryStore,
+        gateway: MealAnalysisGateway,
+        now: @escaping () -> Date = Date.init,
+        calendar: Calendar = .current
+    ) {
         self.store = store
         self.gateway = gateway
         self.now = now
+        self.calendar = calendar
     }
 
     // MARK: Draft meal entry
@@ -141,14 +150,31 @@ public final class MealEntryWorkflow {
     public func mealHistory() throws -> [MealHistoryRow] {
         try store.mealEntries()
             .sorted { $0.date > $1.date }
-            .map { entry in
-                MealHistoryRow(
-                    id: entry.id,
-                    date: entry.date,
-                    foodNames: entry.reviewedFoods.map(\.food.name),
-                    nutritionEstimate: PresentedNutritionEstimate(entry.nutritionEstimate)
-                )
+            .map(MealHistoryRow.init)
+    }
+
+    /// Meal history grouped by day, most recent day first, each with its daily pictured-food total.
+    ///
+    /// A meal entry is assigned to the calendar day containing its `date` in this workflow's calendar and
+    /// time zone. Totals are derived from the saved meal entries each time, so an edited meal entry
+    /// changes only the total of the day it belongs to.
+    public func dailyMealHistory() throws -> [MealHistoryDay] {
+        var days: [(start: Date, entries: [MealEntry])] = []
+        for entry in try store.mealEntries().sorted(by: { $0.date > $1.date }) {
+            let start = calendar.startOfDay(for: entry.date)
+            if days.last?.start == start {
+                days[days.count - 1].entries.append(entry)
+            } else {
+                days.append((start, [entry]))
             }
+        }
+        return days.map { start, entries in
+            MealHistoryDay(
+                date: start,
+                day: calendar.dateComponents([.year, .month, .day], from: start),
+                mealEntries: entries
+            )
+        }
     }
 
     /// A saved meal entry as the person sees it when reopening it from meal history.

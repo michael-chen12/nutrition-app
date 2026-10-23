@@ -10,7 +10,8 @@ final class MealEntryModel {
     private let workflow: MealEntryWorkflow
 
     private(set) var draftReview: MealEntryPresentation?
-    private(set) var history: [MealHistoryRow] = []
+    /// Meal history by day, each with its daily pictured-food total.
+    private(set) var historyDays: [MealHistoryDay] = []
     var errorMessage: String?
 
     init(workflow: MealEntryWorkflow) {
@@ -101,7 +102,7 @@ final class MealEntryModel {
     }
 
     private func refreshHistory() {
-        perform { history = try workflow.mealHistory() }
+        perform { historyDays = try workflow.dailyMealHistory() }
     }
 
     private func perform(_ action: () throws -> Void) {

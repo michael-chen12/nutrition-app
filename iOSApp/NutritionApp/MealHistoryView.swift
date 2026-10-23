@@ -7,13 +7,20 @@ struct MealHistoryView: View {
 
     var body: some View {
         NavigationStack {
-            List(model.history) { row in
-                NavigationLink(value: row.id) {
-                    VStack(alignment: .leading) {
-                        Text(row.date, format: .dateTime.day().month().hour().minute())
-                        Text(row.foodNames.joined(separator: ", ")).font(.subheadline)
-                        Text("≈ \(row.nutritionEstimate.calories)").font(.caption).foregroundStyle(.secondary)
+            List(model.historyDays) { day in
+                Section {
+                    DailyPicturedFoodTotalView(total: day.picturedFoodTotal)
+                    ForEach(day.mealEntries) { row in
+                        NavigationLink(value: row.id) {
+                            VStack(alignment: .leading) {
+                                Text(row.date, format: .dateTime.hour().minute())
+                                Text(row.foodNames.joined(separator: ", ")).font(.subheadline)
+                                Text("≈ \(row.nutritionEstimate.calories)").font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
                     }
+                } header: {
+                    Text(day.date, format: .dateTime.weekday(.wide).day().month(.wide).year())
                 }
             }
             .navigationTitle("Meal history")
@@ -29,6 +36,20 @@ struct MealHistoryView: View {
             .sheet(isPresented: $isAddingMealEntry) {
                 NewMealEntryView(model: model, isPresented: $isAddingMealEntry)
             }
+        }
+    }
+}
+
+/// The four-value daily pictured-food total with its label and note, rendered as the core presents them.
+struct DailyPicturedFoodTotalView: View {
+    let total: PresentedDailyPicturedFoodTotal
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(total.label).font(.headline)
+            Text("≈ \(total.calories) · protein \(total.protein) · carbohydrates \(total.carbohydrates) · fat \(total.fat)")
+                .font(.subheadline)
+            Text(total.note).font(.caption).foregroundStyle(.secondary)
         }
     }
 }

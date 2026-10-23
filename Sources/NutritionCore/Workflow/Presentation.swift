@@ -125,6 +125,60 @@ public struct MealHistoryRow: Hashable, Identifiable, Sendable {
     public var nutritionEstimate: PresentedNutritionEstimate
 }
 
+extension MealHistoryRow {
+    init(_ entry: MealEntry) {
+        self.init(
+            id: entry.id,
+            date: entry.date,
+            foodNames: entry.reviewedFoods.map(\.food.name),
+            nutritionEstimate: PresentedNutritionEstimate(entry.nutritionEstimate)
+        )
+    }
+}
+
+/// One day of meal history: the meal entries assigned to that day and their daily pictured-food total.
+public struct MealHistoryDay: Hashable, Identifiable, Sendable {
+    public var id: Date { date }
+    /// The start of the day in the calendar and time zone the workflow was given; format it for display.
+    public var date: Date
+    /// The day's year, month and day in that calendar, e.g. 2026-10-21.
+    public var day: DateComponents
+    /// The day's meal entries, most recent first.
+    public var mealEntries: [MealHistoryRow]
+    public var picturedFoodTotal: PresentedDailyPicturedFoodTotal
+
+    init(date: Date, day: DateComponents, mealEntries entries: [MealEntry]) {
+        self.date = date
+        self.day = day
+        mealEntries = entries.map(MealHistoryRow.init)
+        picturedFoodTotal = PresentedDailyPicturedFoodTotal(entries.map(\.nutritionEstimate).total())
+    }
+}
+
+/// The combined nutrition estimates for pictured food in one day's meal entries, as shown to the person.
+/// It covers all pictured food, including shared or uneaten food, so it is never presented as what one
+/// person consumed (see docs/adr/0004).
+public struct PresentedDailyPicturedFoodTotal: Hashable, Sendable {
+    public var label = "Daily pictured-food total"
+    /// Shown with the total: what it covers and that it is not a personal measure.
+    public var note = "Approximate combined nutrition estimates for all pictured food in this day's meal entries, "
+        + "including food that was shared or left uneaten. It is not a measure of food consumed by one person."
+    /// Whole kilocalories, e.g. "315 kcal".
+    public var calories: String
+    /// Grams to one decimal place, e.g. "5.1 g".
+    public var protein: String
+    public var carbohydrates: String
+    public var fat: String
+
+    init(_ total: NutritionEstimate) {
+        let values = PresentedNutritionEstimate(total)
+        calories = values.calories
+        protein = values.protein
+        carbohydrates = values.carbohydrates
+        fat = values.fat
+    }
+}
+
 enum PhotoReferenceFormat {
     /// "Photo 3", "Photos 1 and 2", "Photos 1, 2 and 4"; nil for no photos.
     static func shownIn(_ numbers: [Int]) -> String? {

@@ -10,6 +10,8 @@ See `IMPLEMENTATION_PLAN.md`, `GLOSSARY.md` and `docs/adr/`.
   deterministic nutrient calculation, meal history persistence, the external boundary protocol, and the
   `MealEntryWorkflow` feature seam the UI binds to. All behaviour lives here. `FoodData/` holds nutrition
   source adapters (USDA FoodData Central first) that normalize source records to the shared per-100 g `Food`.
+  Meal history is grouped by day: a meal entry belongs to the calendar day containing its date in the
+  `Calendar` (and time zone) given to `MealEntryWorkflow`; the app passes `.current`, tests a fixed one.
 - `Tests/NutritionCoreTests/` — XCTest suite. Feature tests drive `MealEntryWorkflow` and fake only the
   external boundary (`MealAnalysisGateway`). Camera capture tests drive `MealPhotoCapture` with a camera test
   substitute for the on-device `MealPhotoCamera` adapter, since hardware capture is unavailable to them.
