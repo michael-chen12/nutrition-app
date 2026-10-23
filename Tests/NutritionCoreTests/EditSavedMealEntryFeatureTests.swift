@@ -45,7 +45,7 @@ final class EditSavedMealEntryFeatureTests: XCTestCase {
         XCTAssertEqual(reopened.foods.map(\.portion), ["200 g"])
         XCTAssertEqual(reopened.nutritionEstimate.calories, "260 kcal")
         XCTAssertEqual(reopened.nutritionEstimate.carbohydrates, "56.3 g")
-        let history = try relaunched.mealHistory()
+        let history = try relaunched.dailyMealHistory().flatMap(\.mealEntries)
         XCTAssertEqual(history.map(\.id), [id])
         XCTAssertEqual(history.map(\.date), [mealTime])
         XCTAssertEqual(history.map(\.nutritionEstimate.calories), ["260 kcal"])
@@ -87,7 +87,7 @@ final class EditSavedMealEntryFeatureTests: XCTestCase {
         XCTAssertEqual(reopened.foods.map(\.sourceRecordID), ["168878", "169704", nil])
         XCTAssertEqual(reopened.foods.map(\.portion), ["150 g", "100 g", "80 g"])
         assertShowsEditedEstimate(reopened.nutritionEstimate)
-        let history = try relaunched.mealHistory()
+        let history = try relaunched.dailyMealHistory().flatMap(\.mealEntries)
         XCTAssertEqual(history.map(\.id), [id])
         XCTAssertEqual(history.first?.foodNames, ["Rice, white, long-grain, cooked", "Rice, brown, cooked", "Fried plantain"])
         XCTAssertEqual(history.first?.nutritionEstimate.calories, "438 kcal")
@@ -172,7 +172,7 @@ final class EditSavedMealEntryFeatureTests: XCTestCase {
         editing.startNewMealEntry()
 
         XCTAssertEqual(try launchApp().openMealEntry(id: id).foods.map(\.portion), ["150 g"])
-        XCTAssertEqual(try launchApp().mealHistory().map(\.nutritionEstimate.calories), ["195 kcal"])
+        XCTAssertEqual(try launchApp().dailyMealHistory().flatMap(\.mealEntries).map(\.nutritionEstimate.calories), ["195 kcal"])
     }
 
     // MARK: Helpers

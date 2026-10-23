@@ -183,13 +183,6 @@ public final class MealEntryWorkflow {
 
     // MARK: Meal history
 
-    /// Saved meal entries, most recent first.
-    public func mealHistory() throws -> [MealHistoryRow] {
-        try store.mealEntries()
-            .sorted { $0.date > $1.date }
-            .map(MealHistoryRow.init)
-    }
-
     /// Meal history grouped by day, most recent day first, each with its daily pictured-food total.
     ///
     /// A meal entry is assigned to the calendar day containing its `date` in this workflow's calendar and

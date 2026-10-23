@@ -61,7 +61,7 @@ final class RecordPicturedFoodAcrossPhotosFeatureTests: XCTestCase {
             store: try FileMealHistoryStore(directory: directory.url),
             gateway: FakeMealAnalysisGateway()
         )
-        let row = try XCTUnwrap(try secondLaunch.mealHistory().first)
+        let row = try XCTUnwrap(try secondLaunch.dailyMealHistory().flatMap(\.mealEntries).first)
         XCTAssertEqual(row.foodNames, ["Pasta with tomato sauce", "Garden salad", "Shared bread basket"])
         XCTAssertEqual(row.nutritionEstimate.calories, "642 kcal")
 

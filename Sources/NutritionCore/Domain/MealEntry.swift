@@ -138,7 +138,7 @@ public struct UncertaintyNote: Codable, Hashable, Identifiable, Sendable {
     public var id: UUID
     /// e.g. "Cooking oil not visible".
     public var detail: String
-    /// Nil for details noted without a kind (e.g. saved before kinds existed).
+    /// Nil for details noted without a kind.
     public var kind: Kind?
     /// The focused question to ask, e.g. "Was it cooked in oil? How much?"; nil to ask about `detail` itself.
     public var question: String?
@@ -157,19 +157,5 @@ public struct UncertaintyNote: Codable, Hashable, Identifiable, Sendable {
         self.kind = kind
         self.question = question
         self.searchQuery = searchQuery
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case id, detail, kind, question, searchQuery
-    }
-
-    /// Notes saved before focused questions existed decode with a new identity and only their detail.
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
-        detail = try container.decode(String.self, forKey: .detail)
-        kind = try container.decodeIfPresent(Kind.self, forKey: .kind)
-        question = try container.decodeIfPresent(String.self, forKey: .question)
-        searchQuery = try container.decodeIfPresent(String.self, forKey: .searchQuery)
     }
 }

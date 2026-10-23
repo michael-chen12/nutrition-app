@@ -138,7 +138,7 @@ final class ReconcileSuggestionsAcrossPhotosFeatureTests: XCTestCase {
         let reopened = try secondLaunch.openMealEntry(id: id)
         assertShowsPastaOnceWithSharedBreadAndLeftoverFries(reopened)
         XCTAssertEqual(reopened.photos.map(\.imageData), [pastaFromAbove, pastaFromTheSide, breadAndFries])
-        XCTAssertEqual(try secondLaunch.mealHistory().first?.nutritionEstimate.calories, "768 kcal")
+        XCTAssertEqual(try secondLaunch.dailyMealHistory().flatMap(\.mealEntries).first?.nutritionEstimate.calories, "768 kcal")
     }
 
     func test_separatedLikelyDuplicatesAreReviewedAndCountedAsDistinctFoods() async throws {

@@ -176,7 +176,7 @@ final class ClarifyMixedDishesFeatureTests: XCTestCase {
         XCTAssertEqual(resolved.focusedQuestions, [])
         XCTAssertNil(resolved.uncertaintySummary)
         XCTAssertEqual(resolved.nutritionEstimate.calories, "530 kcal")
-        XCTAssertFalse(try XCTUnwrap(secondLaunch.mealHistory().first).hasUnresolvedUncertainty)
+        XCTAssertFalse(try XCTUnwrap(secondLaunch.dailyMealHistory().flatMap(\.mealEntries).first).hasUnresolvedUncertainty)
     }
 
     func test_aQuestionCanBeAnsweredOnlyOnce() async throws {
@@ -219,45 +219,6 @@ final class ClarifyMixedDishesFeatureTests: XCTestCase {
         XCTAssertEqual(workflow.draftReview?.focusedQuestions.map(\.question), [
             "Was it cooked in oil? How much?", "How much Rice, fried, with vegetables was there?",
         ])
-    }
-
-    func test_uncertaintySavedBeforeFocusedQuestionsIsStillAskedAbout() throws {
-        let photoID = UUID()
-        let legacyJSON = """
-        {
-          "id": "\(UUID().uuidString)", "date": 0,
-          "photos": [ { "id": "\(photoID.uuidString)", "fileExtension": "jpg" } ],
-          "reviewedFoods": [ {
-            "id": "\(UUID().uuidString)",
-            "food": { "name": "Curry", "nutrientsPer100g": { "calories": 120, "protein": 6, "carbohydrates": 8,
-                      "fat": 7 }, "source": { "custom": {} } },
-            "portion": { "grams": 300 },
-            "uncertaintyNotes": [ { "detail": "Cooked with oil or plain?" } ],
-            "photoIDs": [ "\(photoID.uuidString)" ]
-          } ]
-        }
-        """
-        let entry = try JSONDecoder().decode(MealEntry.self, from: Data(legacyJSON.utf8))
-        let store = InMemoryMealHistoryStore()
-        try store.save(entry, photoData: [photoID: bowlPhoto])
-        let workflow = makeWorkflow(store: store)
-
-        XCTAssertEqual(try workflow.openMealEntry(id: entry.id).focusedQuestions.map(\.question), [
-            "Cooked with oil or plain?",
-        ])
-        try workflow.editMealEntry(id: entry.id)
-        let question = try XCTUnwrap(workflow.draftReview?.focusedQuestions.first)
-        try workflow.answerQuestion(
-            question.id,
-            byAddingCustomFood: CustomFood(
-                name: "Ghee", nutrientsPer100g: NutrientsPer100g(calories: 900, protein: 0, carbohydrates: 0, fat: 100)
-            ),
-            grams: 10
-        )
-        XCTAssertEqual(workflow.draftReview?.foods.map(\.shownIn), ["Photo 1", "Photo 1"])
-        // 300 g curry (360 kcal) + 10 g ghee (90 kcal).
-        XCTAssertEqual(workflow.draftReview?.nutritionEstimate.calories, "450 kcal")
-        XCTAssertNil(workflow.draftReview?.uncertaintySummary)
     }
 
     // MARK: Known lookup results at the external boundary

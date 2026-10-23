@@ -25,19 +25,6 @@ public struct Food: Codable, Hashable, Sendable {
     public init(_ customFood: CustomFood) {
         self.init(name: customFood.name, nutrientsPer100g: customFood.nutrientsPer100g, source: .custom)
     }
-
-    private enum CodingKeys: String, CodingKey {
-        case name, nutrientsPer100g, source, servingUnits
-    }
-
-    /// Foods saved before serving units existed decode with none.
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        name = try container.decode(String.self, forKey: .name)
-        nutrientsPer100g = try container.decode(NutrientsPer100g.self, forKey: .nutrientsPer100g)
-        source = try container.decode(FoodSource.self, forKey: .source)
-        servingUnits = try container.decodeIfPresent([ServingUnit].self, forKey: .servingUnits) ?? []
-    }
 }
 
 /// A familiar unit a food's portion can be expressed in (e.g. "cup", "slice"), with the gram weight its

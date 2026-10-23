@@ -106,7 +106,7 @@ final class CorrectPortionWithServingUnitsFeatureTests: XCTestCase {
         XCTAssertEqual(rice.sourceRecordID, "168878")
         XCTAssertEqual(reopened.nutritionEstimate.calories, "308 kcal")
         XCTAssertEqual(reopened.nutritionEstimate.carbohydrates, "66.8 g")
-        XCTAssertEqual(try secondLaunch.mealHistory().map(\.nutritionEstimate.calories), ["308 kcal"])
+        XCTAssertEqual(try secondLaunch.dailyMealHistory().flatMap(\.mealEntries).map(\.nutritionEstimate.calories), ["308 kcal"])
     }
 
     func test_servingQuantityMustBePositiveAndTheUnitMustBeOneOfTheFoods() async throws {

@@ -53,7 +53,7 @@ final class CaptureMealPhotoFeatureTests: XCTestCase {
             store: try FileMealHistoryStore(directory: directory.url),
             gateway: FakeMealAnalysisGateway()
         )
-        let row = try XCTUnwrap(try relaunched.mealHistory().first)
+        let row = try XCTUnwrap(try relaunched.dailyMealHistory().flatMap(\.mealEntries).first)
         XCTAssertEqual(row.foodNames, ["Grandma's dumplings"])
         let reopened = try relaunched.openMealEntry(id: row.id)
         XCTAssertEqual(reopened.date, mealTime)

@@ -53,7 +53,7 @@ final class SaveManualMealEntryFeatureTests: XCTestCase {
             now: Date.init
         )
 
-        let history = try secondLaunch.mealHistory()
+        let history = try secondLaunch.dailyMealHistory().flatMap(\.mealEntries)
         XCTAssertEqual(history.count, 1)
         let row = try XCTUnwrap(history.first)
         XCTAssertEqual(row.date, mealTime)
