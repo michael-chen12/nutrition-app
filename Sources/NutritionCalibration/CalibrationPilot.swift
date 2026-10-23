@@ -11,6 +11,7 @@ import NutritionCore
 ///     calibration-report.md             written by `writeCalibrationReport()`
 ///     pass-criteria.json                FrozenPassCriteria, once frozen
 ///     validation-report.md              written when the validation set is scored
+///     estimate-reliability.json         the accuracy claim the app may make, written with it
 public final class CalibrationPilot {
     public let directory: URL
 
@@ -50,8 +51,25 @@ public final class CalibrationPilot {
         return meals.sorted { $0.id < $1.id }
     }
 
-    /// The meal's photos, in the order it names them.
+    /// The meal's photos, in the order it names them. Refused for a validation meal that reuses a calibration
+    /// meal's photo.
     public func photos(for meal: ReferenceMeal) throws -> [TrialPhoto] {
+        if meal.split == .validation { try checkNoCalibrationPhotoIsReused(by: [meal]) }
+        return try photoFiles(of: meal)
+    }
+
+    /// Validation meals must be new meals: none may show a calibration meal's photo, under any file name. A
+    /// re-photographed calibration meal cannot be told apart this way; collecting new meals is the safeguard.
+    private func checkNoCalibrationPhotoIsReused(by validationMeals: [ReferenceMeal]) throws {
+        let calibrationPhotos = Set(try referenceMeals().filter { $0.split == .calibration }.flatMap { try photoFiles(of: $0) }.map(\.data))
+        for meal in validationMeals {
+            for (fileName, photo) in zip(meal.photoFileNames, try photoFiles(of: meal)) where calibrationPhotos.contains(photo.data) {
+                throw CalibrationPilotError.validationMealReusesCalibrationPhoto(meal.id, photoFileName: fileName)
+            }
+        }
+    }
+
+    private func photoFiles(of meal: ReferenceMeal) throws -> [TrialPhoto] {
         try meal.photoFileNames.map { fileName in
             let url = photosDirectory.appendingPathComponent(fileName)
             guard FileManager.default.fileExists(atPath: url.path) else {
@@ -116,28 +134,24 @@ public final class CalibrationPilot {
     // MARK: Pass criteria and validation
 
     /// Writes down the pass criteria, once, after every calibration meal is evaluated and before any validation
-    /// scoring. The calibration set must span at least two cuisines and two dish types. From then on calibration
-    /// is closed.
+    /// scoring. They must limit calorie, protein, carbohydrate and fat error at both stages, and the calibration
+    /// set must span at least two cuisines and two dish types. From then on calibration is closed.
     @discardableResult
     public func freezePassCriteria(_ criteria: [PassCriterion], on date: Date) throws -> FrozenPassCriteria {
-        guard !FileManager.default.fileExists(atPath: validationReportURL.path) else {
-            throw CalibrationPilotError.validationAlreadyScored
-        }
+        guard !validationScored else { throw CalibrationPilotError.validationAlreadyScored }
         guard try frozenPassCriteria() == nil else { throw CalibrationPilotError.passCriteriaAlreadyFrozen }
         guard !criteria.isEmpty else { throw CalibrationPilotError.noPassCriteria }
         if let invalid = criteria.first(where: { !$0.isValid }) {
             throw CalibrationPilotError.invalidPassCriterion(invalid)
         }
+        let missing = RequiredCriterion.missing(from: criteria)
+        guard missing.isEmpty else { throw CalibrationPilotError.missingNutrientCriteria(missing) }
         let calibration = try calibrationRecords()
         let notEvaluated = try unevaluatedMealIDs(in: .calibration)
         guard !calibration.meals.isEmpty, notEvaluated.isEmpty else {
             throw CalibrationPilotError.calibrationIncomplete(notEvaluated: notEvaluated)
         }
-        let cuisineCount = Set(calibration.meals.map(\.cuisine)).count
-        let dishTypeCount = Set(calibration.meals.map(\.dishType)).count
-        guard cuisineCount >= 2, dishTypeCount >= 2 else {
-            throw CalibrationPilotError.calibrationNotDiverse(cuisineCount: cuisineCount, dishTypeCount: dishTypeCount)
-        }
+        try Self.checkDiverse(calibration.meals, else: CalibrationPilotError.calibrationNotDiverse)
         let frozen = FrozenPassCriteria(
             criteria: criteria,
             frozenOn: date,
@@ -154,28 +168,46 @@ public final class CalibrationPilot {
         return try Self.decoder.decode(FrozenPassCriteria.self, from: Data(contentsOf: passCriteriaURL))
     }
 
-    /// Scores the held-out validation set against the frozen pass criteria, once, and writes validation-report.md.
-    /// Refused until the criteria are frozen and every validation meal is evaluated, and if the calibration
-    /// records have changed since freezing.
+    /// Scores the held-out validation set against the frozen pass criteria, once, and writes validation-report.md
+    /// and estimate-reliability.json (the accuracy claim the app may make). Refused until the criteria are frozen
+    /// and every validation meal is evaluated; if the validation set spans fewer than two cuisines or dish types
+    /// or reuses a calibration meal's photo; and if the calibration records have changed since freezing.
     @discardableResult
-    public func scoreValidation() throws -> ValidationScore {
-        guard !FileManager.default.fileExists(atPath: validationReportURL.path) else {
-            throw CalibrationPilotError.validationAlreadyScored
-        }
+    public func scoreValidation(on date: Date) throws -> ValidationScore {
+        guard !validationScored else { throw CalibrationPilotError.validationAlreadyScored }
         guard let frozen = try frozenPassCriteria() else { throw CalibrationPilotError.passCriteriaNotFrozen }
         guard try calibrationRecords().fingerprint() == frozen.calibrationFingerprint else {
             throw CalibrationPilotError.calibrationChangedSincePassCriteriaFrozen
         }
         let notEvaluated = try unevaluatedMealIDs(in: .validation)
         guard notEvaluated.isEmpty else { throw CalibrationPilotError.validationIncomplete(notEvaluated: notEvaluated) }
+        let validationMeals = try referenceMeals().filter { $0.split == .validation }
+        try Self.checkDiverse(validationMeals, else: CalibrationPilotError.validationNotDiverse)
+        try checkNoCalibrationPhotoIsReused(by: validationMeals)
         let report = try AccuracyReport(split: .validation, meals: referenceMeals(), evaluations: evaluations())
         let score = ValidationScore(
             report: report,
             criteria: frozen,
+            scoredOn: date,
             results: frozen.criteria.map { CriterionResult(criterion: $0, measurements: $0.measurements(in: report)) }
         )
+        try Self.encoder.encode(score.reliability).write(to: estimateReliabilityURL, options: .atomic)
         try Data(score.markdown.utf8).write(to: validationReportURL, options: .atomic)
         return score
+    }
+
+    /// Each set of the study must span at least two cuisines and two dish types.
+    private static func checkDiverse(
+        _ meals: [ReferenceMeal], else error: (_ cuisineCount: Int, _ dishTypeCount: Int) -> CalibrationPilotError
+    ) throws {
+        let cuisineCount = Set(meals.map(\.cuisine)).count
+        let dishTypeCount = Set(meals.map(\.dishType)).count
+        guard cuisineCount >= 2, dishTypeCount >= 2 else { throw error(cuisineCount, dishTypeCount) }
+    }
+
+    /// Either file of a scored validation set means it was scored, even if writing the other failed.
+    private var validationScored: Bool {
+        [validationReportURL, estimateReliabilityURL].contains { FileManager.default.fileExists(atPath: $0.path) }
     }
 
     private func calibrationRecords() throws -> CalibrationRecords {
@@ -192,6 +224,7 @@ public final class CalibrationPilot {
     var passCriteriaURL: URL { directory.appendingPathComponent("pass-criteria.json") }
     var calibrationReportURL: URL { directory.appendingPathComponent("calibration-report.md") }
     var validationReportURL: URL { directory.appendingPathComponent("validation-report.md") }
+    var estimateReliabilityURL: URL { directory.appendingPathComponent("estimate-reliability.json") }
 
     private func evaluationURL(for mealID: ReferenceMeal.ID) -> URL {
         evaluationsDirectory.appendingPathComponent("\(mealID).json")
@@ -210,6 +243,8 @@ public enum CalibrationPilotError: Error, Equatable {
     case duplicateReferenceMeal(ReferenceMeal.ID)
     /// A reference meal names a photo that is not in the photos folder.
     case missingPhoto(String)
+    /// A validation meal's photo is identical to a calibration meal's, so it is not a new meal.
+    case validationMealReusesCalibrationPhoto(ReferenceMeal.ID, photoFileName: String)
     case unknownReferenceMeal(ReferenceMeal.ID)
     /// The meal already has a recorded evaluation.
     case alreadyEvaluated(ReferenceMeal.ID)
@@ -218,6 +253,8 @@ public enum CalibrationPilotError: Error, Equatable {
     case noPassCriteria
     /// A criterion has no rationale, a negative or infinite limit, or measures correction time before review.
     case invalidPassCriterion(PassCriterion)
+    /// The criteria set no limit for these nutrients at these stages.
+    case missingNutrientCriteria([RequiredCriterion])
     case passCriteriaAlreadyFrozen
     /// Pass criteria are frozen only once every calibration meal is evaluated.
     case calibrationIncomplete(notEvaluated: [ReferenceMeal.ID])
@@ -228,6 +265,8 @@ public enum CalibrationPilotError: Error, Equatable {
     /// Validation meals are evaluated and scored only once the pass criteria are frozen.
     case passCriteriaNotFrozen
     case validationIncomplete(notEvaluated: [ReferenceMeal.ID])
+    /// The validation set must span at least two cuisines and two dish types.
+    case validationNotDiverse(cuisineCount: Int, dishTypeCount: Int)
     /// Calibration meals or evaluations differ from those the pass criteria were frozen against.
     case calibrationChangedSincePassCriteriaFrozen
 }

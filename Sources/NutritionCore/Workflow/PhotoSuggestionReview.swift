@@ -439,6 +439,7 @@ public struct PhotoAnalysisDisclosure: Hashable, Sendable {
         "Only analyze non-sensitive test photos: no people, faces, documents, screens or anything private.",
         "Your meal history stays on this iPhone. Suggestions are approximate: you review every food and portion, "
             + "and nutrition comes from documented food data or custom foods, never from the analysis.",
+        EstimateReliability.published.statement,
     ]
     public var uploadButtonTitle = "Upload photo for analysis"
     public var manualEntryButtonTitle = "Enter foods myself"

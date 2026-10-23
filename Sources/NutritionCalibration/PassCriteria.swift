@@ -1,4 +1,5 @@
 import Foundation
+import NutritionCore
 
 /// One numeric pass criterion for broad release, written down after inspecting the calibration results and
 /// frozen before any validation meal is scored (ADR 0002).
@@ -56,7 +57,12 @@ public struct PassCriterion: Codable, Hashable, Sendable {
         return groups.map { CriterionMeasurement(group: $0.name, value: value(in: $0)) }
     }
 
-    private func value(in group: GroupAccuracy) -> Double? {
+    /// Whether a measured value is within the limit. A value that could not be measured is not.
+    func admits(_ value: Double?) -> Bool {
+        value.map { $0 <= atMost } ?? false
+    }
+
+    func value(in group: GroupAccuracy) -> Double? {
         let accuracy = group[stage]
         switch metric {
         case .caloriesPercentError: return accuracy.calories.meanAbsolutePercentError
@@ -66,6 +72,29 @@ public struct PassCriterion: Codable, Hashable, Sendable {
         case .missingFoodPercent: return group.mealCount == 0 ? nil : accuracy.missingFoodRate * 100
         case .medianCorrectionTime: return group.medianCorrectionTime
         }
+    }
+}
+
+/// A stage and nutrient the pass criteria must set a limit for: calories and each macronutrient, for the automatic
+/// pre-review estimate and the reviewed estimate separately (ADR 0002). Any scope will do.
+public struct RequiredCriterion: Hashable, Sendable {
+    public var stage: EstimateStage
+    public var metric: PassCriterion.Metric
+
+    public init(stage: EstimateStage, metric: PassCriterion.Metric) {
+        self.stage = stage
+        self.metric = metric
+    }
+
+    static let all: [RequiredCriterion] = EstimateStage.allCases.flatMap { stage in
+        [PassCriterion.Metric.caloriesPercentError, .proteinPercentError, .carbohydratesPercentError, .fatPercentError]
+            .map { RequiredCriterion(stage: stage, metric: $0) }
+    }
+
+    /// The required criteria `criteria` sets no limit for, in stage then nutrient order.
+    static func missing(from criteria: [PassCriterion]) -> [RequiredCriterion] {
+        let covered = Set(criteria.map { RequiredCriterion(stage: $0.stage, metric: $0.metric) })
+        return all.filter { !covered.contains($0) }
     }
 }
 
@@ -84,11 +113,73 @@ public struct FrozenPassCriteria: Codable, Hashable, Sendable {
 public struct ValidationScore: Hashable, Sendable {
     public var report: AccuracyReport
     public var criteria: FrozenPassCriteria
+    public var scoredOn: Date
     /// One per criterion, in the frozen order.
     public var results: [CriterionResult]
 
-    /// Every criterion passed.
+    /// Every criterion passed: the accuracy gate for broad launch.
     public var passed: Bool { results.allSatisfy(\.passed) }
+
+    /// Every cuisine and dish type that, on its own, is over a criterion's limit or cannot be measured for it,
+    /// whatever the criterion's scope: a criterion for all meals can pass while one cuisine fails it. Cuisines
+    /// first, each group's failures in criterion order.
+    public var groupFailures: [GroupFailure] {
+        let grouped: [(ReportGrouping, [GroupAccuracy])] = [(.cuisine, report.byCuisine), (.dishType, report.byDishType)]
+        return grouped.flatMap { grouping, groups in
+            groups.flatMap { group in
+                criteria.criteria.compactMap { criterion in
+                    let value = criterion.value(in: group)
+                    return criterion.admits(value)
+                        ? nil : GroupFailure(grouping: grouping, group: group.name, criterion: criterion, value: value)
+                }
+            }
+        }
+    }
+
+    /// The accuracy claim the app may make from this validation: none unless it passed.
+    public var reliability: EstimateReliability {
+        let overall = report.overall
+        guard passed,
+              let preReview = overall.preReview.calories.meanAbsolutePercentError,
+              let reviewed = overall.reviewed.calories.meanAbsolutePercentError else { return .notValidated }
+        // Only measured nutrient errors make a group less accurate; a missing-food or correction-time limit, or a
+        // group that could not be measured, says nothing about how close its estimates were.
+        let nutrientMetrics = Set(RequiredCriterion.all.map(\.metric))
+        func lessAccurate(_ grouping: ReportGrouping) -> [String] {
+            groupFailures
+                .filter { $0.grouping == grouping && $0.value != nil && nutrientMetrics.contains($0.criterion.metric) }
+                .map(\.group).reduce(into: []) { names, name in
+                if !names.contains(name) { names.append(name) }
+            }
+        }
+        return .validated(accuracy: ValidatedAccuracy(
+            validatedOn: scoredOn,
+            mealCount: overall.mealCount,
+            cuisines: report.byCuisine.map(\.name),
+            dishTypes: report.byDishType.map(\.name),
+            preReviewCaloriePercentError: preReview,
+            reviewedCaloriePercentError: reviewed,
+            lessAccurateCuisines: lessAccurate(.cuisine),
+            lessAccurateDishTypes: lessAccurate(.dishType)
+        ))
+    }
+}
+
+/// A cuisine or dish type over one pass criterion's limit in the validation set.
+public struct GroupFailure: Hashable, Sendable {
+    public var grouping: ReportGrouping
+    /// The cuisine or dish type.
+    public var group: String
+    public var criterion: PassCriterion
+    /// Nil when the group could not be measured for the criterion.
+    public var value: Double?
+
+    public init(grouping: ReportGrouping, group: String, criterion: PassCriterion, value: Double?) {
+        self.grouping = grouping
+        self.group = group
+        self.criterion = criterion
+        self.value = value
+    }
 }
 
 public struct CriterionResult: Hashable, Sendable {
@@ -98,7 +189,7 @@ public struct CriterionResult: Hashable, Sendable {
 
     /// Every group was measured and is within the limit. A group with no measurable value fails.
     public var passed: Bool {
-        !measurements.isEmpty && measurements.allSatisfy { $0.value.map { $0 <= criterion.atMost } ?? false }
+        !measurements.isEmpty && measurements.allSatisfy { criterion.admits($0.value) }
     }
 }
 

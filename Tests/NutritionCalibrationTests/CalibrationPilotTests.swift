@@ -138,6 +138,7 @@ final class CalibrationPilotTests: XCTestCase {
     // MARK: Pass criteria and validation
 
     private let frozenOn = Date(timeIntervalSince1970: 1_793_000_000)
+    private let scoredOn = Date(timeIntervalSince1970: 1_794_000_000)
 
     /// Written after reading the calibration report.
     private let criteria = [
@@ -157,7 +158,13 @@ final class CalibrationPilotTests: XCTestCase {
             stage: .reviewed, metric: .medianCorrectionTime, scope: .allMeals, atMost: 180,
             rationale: "Calibration median review took 120 s."
         ),
-    ]
+    ] + [
+        (EstimateStage.reviewed, PassCriterion.Metric.proteinPercentError), (.reviewed, .carbohydratesPercentError),
+        (.reviewed, .fatPercentError), (.preReview, .caloriesPercentError), (.preReview, .proteinPercentError),
+        (.preReview, .carbohydratesPercentError), (.preReview, .fatPercentError),
+    ].map { stage, metric in
+        PassCriterion(stage: stage, metric: metric, scope: .allMeals, atMost: 80, rationale: "Generous for the pilot.")
+    }
 
     /// The diverse calibration set from `AccuracyReportTests`, all evaluated, and two validation meals not yet
     /// evaluated.
@@ -176,7 +183,10 @@ final class CalibrationPilotTests: XCTestCase {
                 food("beans", calories: 200, protein: 12, carbohydrates: 30, fat: 2),
             ]),
         ]
-        for meal in calibration + validation { try write(meal) }
+        for meal in calibration + validation {
+            try write(meal)
+            try write(photo: Data(meal.id.utf8), named: "\(meal.id).jpg")
+        }
         try pilot.record(evaluation("ramen", preReview: (300, 10, 50, 5), reviewed: (380, 14, 54, 9), correctionTime: 60))
         try pilot.record(evaluation("pozole", preReview: (600, 30, 60, 25), reviewed: (550, 30, 55, 20), correctionTime: 120))
         try pilot.record(evaluation("tacos", preReview: (0, 0, 0, 0), reviewed: (400, 17, 70, 5), correctionTime: 300))
@@ -226,6 +236,24 @@ final class CalibrationPilotTests: XCTestCase {
         }
     }
 
+    func test_criteriaCoverCaloriesAndEachMacronutrientAtBothStages() throws {
+        try writeCalibratedPilot()
+        let reviewedCaloriesOnly = Array(criteria.prefix(4))
+
+        XCTAssertThrowsError(try pilot.freezePassCriteria(reviewedCaloriesOnly, on: frozenOn)) { error in
+            XCTAssertEqual(error as? CalibrationPilotError, .missingNutrientCriteria([
+                RequiredCriterion(stage: .preReview, metric: .caloriesPercentError),
+                RequiredCriterion(stage: .preReview, metric: .proteinPercentError),
+                RequiredCriterion(stage: .preReview, metric: .carbohydratesPercentError),
+                RequiredCriterion(stage: .preReview, metric: .fatPercentError),
+                RequiredCriterion(stage: .reviewed, metric: .proteinPercentError),
+                RequiredCriterion(stage: .reviewed, metric: .carbohydratesPercentError),
+                RequiredCriterion(stage: .reviewed, metric: .fatPercentError),
+            ]))
+        }
+        XCTAssertNil(try pilot.frozenPassCriteria())
+    }
+
     func test_criteriaAreFrozenOnceAgainstTheCalibrationResults() throws {
         try writeCalibratedPilot()
 
@@ -243,7 +271,7 @@ final class CalibrationPilotTests: XCTestCase {
     func test_validationIsNotScoredBeforeTheCriteriaAreFrozen() throws {
         try writeCalibratedPilot()
 
-        XCTAssertThrowsError(try pilot.scoreValidation()) { error in
+        XCTAssertThrowsError(try pilot.scoreValidation(on: scoredOn)) { error in
             XCTAssertEqual(error as? CalibrationPilotError, .passCriteriaNotFrozen)
         }
         XCTAssertFalse(FileManager.default.fileExists(atPath: directory.url.appendingPathComponent("validation-report.md").path))
@@ -253,8 +281,34 @@ final class CalibrationPilotTests: XCTestCase {
         try writeCalibratedPilot()
         try pilot.freezePassCriteria(criteria, on: frozenOn)
 
-        XCTAssertThrowsError(try pilot.scoreValidation()) { error in
+        XCTAssertThrowsError(try pilot.scoreValidation(on: scoredOn)) { error in
             XCTAssertEqual(error as? CalibrationPilotError, .validationIncomplete(notEvaluated: ["v-miso", "v-tacos"]))
+        }
+    }
+
+    func test_aValidationSetOfOneCuisineOrDishTypeIsNotScored() throws {
+        try writeCalibratedPilot()
+        try FileManager.default.removeItem(at: directory.url.appendingPathComponent("reference-meals/v-tacos.json"))
+        try pilot.freezePassCriteria(criteria, on: frozenOn)
+        try pilot.record(evaluation("v-miso", preReview: (380, 19, 38, 9), reviewed: (390, 20, 40, 10), correctionTime: 90))
+
+        XCTAssertThrowsError(try pilot.scoreValidation(on: scoredOn)) { error in
+            XCTAssertEqual(error as? CalibrationPilotError, .validationNotDiverse(cuisineCount: 1, dishTypeCount: 1))
+        }
+    }
+
+    func test_aValidationMealCannotReuseACalibrationMealsPhoto() throws {
+        try writeCalibratedPilot()
+        try pilot.freezePassCriteria(criteria, on: frozenOn)
+        let miso = try XCTUnwrap(try pilot.referenceMeals().first { $0.id == "v-miso" })
+        try write(photo: Data("ramen".utf8), named: "v-miso.jpg")
+
+        XCTAssertThrowsError(try pilot.photos(for: miso)) { error in
+            XCTAssertEqual(error as? CalibrationPilotError, .validationMealReusesCalibrationPhoto("v-miso", photoFileName: "v-miso.jpg"))
+        }
+        try evaluateValidationMeals()
+        XCTAssertThrowsError(try pilot.scoreValidation(on: scoredOn)) { error in
+            XCTAssertEqual(error as? CalibrationPilotError, .validationMealReusesCalibrationPhoto("v-miso", photoFileName: "v-miso.jpg"))
         }
     }
 
@@ -263,11 +317,11 @@ final class CalibrationPilotTests: XCTestCase {
         try pilot.freezePassCriteria(criteria, on: frozenOn)
         try evaluateValidationMeals()
 
-        let score = try pilot.scoreValidation()
+        let score = try pilot.scoreValidation(on: scoredOn)
 
         XCTAssertEqual(score.report.split, .validation)
         XCTAssertEqual(score.report.overall.mealCount, 2)
-        XCTAssertEqual(score.results.map(\.passed), [true, false, false, true])
+        XCTAssertEqual(score.results.prefix(4).map(\.passed), [true, false, false, true])
         // Reviewed calorie error 13.75 % for all meals; 2.5 % Japanese and 25 % Mexican.
         XCTAssertEqual(score.results[0].measurements, [CriterionMeasurement(group: "All meals", value: 13.75)])
         XCTAssertEqual(score.results[1].measurements, [
@@ -279,16 +333,107 @@ final class CalibrationPilotTests: XCTestCase {
         XCTAssertFalse(score.passed)
         let written = try String(contentsOf: directory.url.appendingPathComponent("validation-report.md"), encoding: .utf8)
         XCTAssertEqual(written, score.markdown)
-        XCTAssertTrue(written.contains("**Result: not passed.**"))
+        XCTAssertTrue(written.contains("**Accuracy gate: not passed.**"))
+    }
+
+    func test_theScoreNamesEveryCuisineAndDishTypeOverACriterionsLimitWhateverItsScope() throws {
+        try writeCalibratedPilot()
+        try pilot.freezePassCriteria(criteria, on: frozenOn)
+        try evaluateValidationMeals()
+
+        let score = try pilot.scoreValidation(on: scoredOn)
+
+        // Tacos alone: reviewed calories 25 % (all-meals limit 15, so the all-meals criterion still passes; each-
+        // cuisine limit 20), analysis missed 1 of 2 foods, 200 s of review. Miso is within every limit.
+        XCTAssertTrue(score.results[0].passed)
+        let tacosFailures = [(criteria[0], 25.0), (criteria[1], 25), (criteria[2], 50), (criteria[3], 200)]
+        XCTAssertEqual(
+            score.groupFailures,
+            tacosFailures.map { GroupFailure(grouping: .cuisine, group: "Mexican", criterion: $0, value: $1) }
+                + tacosFailures.map { GroupFailure(grouping: .dishType, group: "Taco plate", criterion: $0, value: $1) }
+        )
+        XCTAssertTrue(score.markdown.contains("**Accuracy gate: not passed.** The validation does not support a broad launch."))
+        XCTAssertTrue(score.markdown.contains("- Mexican (cuisine): reviewed calories % 25.0, over the limit of 15.0 for all meals."))
+        XCTAssertTrue(score.markdown.contains("- Taco plate (dish type): pre-review missing foods % 50.0, over the limit of 30.0 for all meals."))
+    }
+
+    func test_aPassedValidationGivesTheAccuracyClaimTheAppMayMakeWithTheGroupsThatDidWorse() throws {
+        try writeCalibratedPilot()
+        // Reviewed calories within 15 % for all meals, and generous nutrient limits otherwise.
+        try pilot.freezePassCriteria([criteria[0]] + criteria.suffix(7), on: frozenOn)
+        try evaluateValidationMeals()
+
+        let score = try pilot.scoreValidation(on: scoredOn)
+
+        XCTAssertTrue(score.passed)
+        // Calorie errors: reviewed 2.5 % and 25 %, pre-review 5 % and 50 %. Tacos alone is over the 15 % limit.
+        let expected = EstimateReliability.validated(accuracy: ValidatedAccuracy(
+            validatedOn: scoredOn, mealCount: 2, cuisines: ["Japanese", "Mexican"], dishTypes: ["Soup", "Taco plate"],
+            preReviewCaloriePercentError: 27.5, reviewedCaloriePercentError: 13.75,
+            lessAccurateCuisines: ["Mexican"], lessAccurateDishTypes: ["Taco plate"]
+        ))
+        XCTAssertEqual(score.reliability, expected)
+        XCTAssertEqual(
+            expected.statement,
+            "Tested on 2 new meals with weighed portions or known recipes (cuisines: Japanese, Mexican; dish types: "
+                + "Soup, Taco plate). Reviewed estimates were off by 14 % in calories on average; photo suggestions "
+                + "before review, by 28 %. Less accurate for: Mexican (cuisine), Taco plate (dish type)."
+        )
+        XCTAssertTrue(score.markdown.contains("> \(expected.statement)"))
+        let written = try Data(contentsOf: directory.url.appendingPathComponent("estimate-reliability.json"))
+        XCTAssertEqual(try CalibrationPilot.decoder.decode(EstimateReliability.self, from: written), expected)
+    }
+
+    func test_aGroupOverOnlyACorrectionTimeLimitIsNotClaimedLessAccurate() throws {
+        try writeCalibratedPilot()
+        let reviewedCalories = PassCriterion(
+            stage: .reviewed, metric: .caloriesPercentError, scope: .allMeals, atMost: 80, rationale: "Generous for the pilot."
+        )
+        // Median review 145 s passes the 180 s limit; tacos alone took 200 s.
+        try pilot.freezePassCriteria([reviewedCalories, criteria[3]] + criteria.suffix(7), on: frozenOn)
+        try evaluateValidationMeals()
+
+        let score = try pilot.scoreValidation(on: scoredOn)
+
+        XCTAssertTrue(score.passed)
+        XCTAssertEqual(score.groupFailures.map(\.group), ["Mexican", "Taco plate"])
+        guard case .validated(let accuracy) = score.reliability else { return XCTFail("\(score.reliability)") }
+        XCTAssertEqual(accuracy.lessAccurateCuisines, [])
+        XCTAssertEqual(accuracy.lessAccurateDishTypes, [])
+    }
+
+    func test_aValidationThatDidNotPassLeavesTheAppWithoutAnAccuracyClaim() throws {
+        try writeCalibratedPilot()
+        try pilot.freezePassCriteria(criteria, on: frozenOn)
+        try evaluateValidationMeals()
+
+        let score = try pilot.scoreValidation(on: scoredOn)
+
+        XCTAssertFalse(score.passed)
+        XCTAssertEqual(score.reliability, .notValidated)
+        let written = try Data(contentsOf: directory.url.appendingPathComponent("estimate-reliability.json"))
+        XCTAssertEqual(try CalibrationPilot.decoder.decode(EstimateReliability.self, from: written), .notValidated)
     }
 
     func test_validationIsScoredOnce() throws {
         try writeCalibratedPilot()
         try pilot.freezePassCriteria(criteria, on: frozenOn)
         try evaluateValidationMeals()
-        try pilot.scoreValidation()
+        try pilot.scoreValidation(on: scoredOn)
 
-        XCTAssertThrowsError(try pilot.scoreValidation()) { error in
+        XCTAssertThrowsError(try pilot.scoreValidation(on: scoredOn)) { error in
+            XCTAssertEqual(error as? CalibrationPilotError, .validationAlreadyScored)
+        }
+    }
+
+    func test_aWrittenAccuracyClaimAloneCountsAsScored() throws {
+        try writeCalibratedPilot()
+        try pilot.freezePassCriteria(criteria, on: frozenOn)
+        try evaluateValidationMeals()
+        try pilot.scoreValidation(on: scoredOn)
+        try FileManager.default.removeItem(at: directory.url.appendingPathComponent("validation-report.md"))
+
+        XCTAssertThrowsError(try pilot.scoreValidation(on: scoredOn)) { error in
             XCTAssertEqual(error as? CalibrationPilotError, .validationAlreadyScored)
         }
     }
@@ -297,7 +442,7 @@ final class CalibrationPilotTests: XCTestCase {
         try writeCalibratedPilot()
         try pilot.freezePassCriteria(criteria, on: frozenOn)
         try evaluateValidationMeals()
-        try pilot.scoreValidation()
+        try pilot.scoreValidation(on: scoredOn)
         try FileManager.default.removeItem(at: directory.url.appendingPathComponent("pass-criteria.json"))
 
         XCTAssertThrowsError(try pilot.freezePassCriteria(criteria, on: frozenOn)) { error in
@@ -316,7 +461,7 @@ final class CalibrationPilotTests: XCTestCase {
             XCTAssertEqual(error as? CalibrationPilotError, .calibrationClosed)
         }
         // Calibration records changed since the criteria were set from them.
-        XCTAssertThrowsError(try pilot.scoreValidation()) { error in
+        XCTAssertThrowsError(try pilot.scoreValidation(on: scoredOn)) { error in
             XCTAssertEqual(error as? CalibrationPilotError, .calibrationChangedSincePassCriteriaFrozen)
         }
     }

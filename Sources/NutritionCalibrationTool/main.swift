@@ -11,7 +11,8 @@ let usage = """
       nutrition-calibration freeze-criteria <pilot directory> <criteria JSON file>
           Freezes the pass criteria (a JSON array of PassCriterion) into pass-criteria.json.
       nutrition-calibration score-validation <pilot directory>
-          Scores the validation set against the frozen pass criteria, writes validation-report.md, and prints it.
+          Scores the validation set against the frozen pass criteria, writes validation-report.md and
+          estimate-reliability.json (the accuracy claim the app may make), and prints the report.
     """
 
 func standardError(_ text: String) {
@@ -36,7 +37,7 @@ do {
         let frozen = try pilot.freezePassCriteria(criteria, on: Date())
         print("Froze \(frozen.criteria.count) pass criteria against \(frozen.calibrationMealIDs.count) calibration meals.")
     case ("score-validation", 2):
-        let score = try pilot.scoreValidation()
+        let score = try pilot.scoreValidation(on: Date())
         print(score.markdown, terminator: "")
         exit(score.passed ? 0 : 1)
     default:

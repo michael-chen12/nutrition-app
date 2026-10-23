@@ -114,6 +114,17 @@ final class AccuracyReportTests: XCTestCase {
         XCTAssertFalse(report.byCuisine.map(\.name).contains("Ethiopian"))
     }
 
+    func test_theCalibrationReportSaysItDoesNotDecideBroadLaunch() throws {
+        let notice = "Calibration results only set the pass criteria. They do not show that the app is ready for "
+            + "a broad launch: only the held-out validation set, scored against the frozen criteria, can."
+
+        let calibration = try AccuracyReport(split: .calibration, meals: meals, evaluations: evaluations)
+        let validation = try AccuracyReport(split: .validation, meals: meals, evaluations: [])
+
+        XCTAssertTrue(calibration.markdown.contains(notice))
+        XCTAssertFalse(validation.markdown.contains(notice))
+    }
+
     func test_gapsFlagThinGroupsAndGroupsWhoseErrorIsWellAboveTheWholeSet() throws {
         let report = try AccuracyReport(split: .calibration, meals: meals, evaluations: evaluations)
 

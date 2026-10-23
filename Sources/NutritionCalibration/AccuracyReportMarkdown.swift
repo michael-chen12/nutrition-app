@@ -10,6 +10,15 @@ extension AccuracyReport {
             "",
             "\(overall.mealCount) evaluated \(overall.mealCount == 1 ? "meal" : "meals") from the \(split.rawValue) set.",
             "",
+        ]
+        if split == .calibration {
+            lines += [
+                "Calibration results only set the pass criteria. They do not show that the app is ready for a broad "
+                    + "launch: only the held-out validation set, scored against the frozen criteria, can.",
+                "",
+            ]
+        }
+        lines += [
             "- **Pre-review**: photo suggestions accepted as offered, before any review (the automatic estimate).",
             "- **Reviewed**: the saved meal entry after the person's review (the final nutrition estimate).",
             "- Error is estimate minus reference; \"abs.\" is its mean absolute value, \"%\" the mean absolute error "
@@ -69,16 +78,19 @@ extension AccuracyReport {
 extension ValidationScore {
     /// The criteria results followed by the validation accuracy report.
     public var markdown: String {
-        let frozenOn = ISO8601DateFormatter.string(
-            from: criteria.frozenOn, timeZone: TimeZone(identifier: "UTC")!, formatOptions: [.withFullDate]
-        )
+        func day(_ date: Date) -> String {
+            ISO8601DateFormatter.string(from: date, timeZone: TimeZone(identifier: "UTC")!, formatOptions: [.withFullDate])
+        }
         var lines = [
             "# Validation against the frozen pass criteria",
             "",
-            "Pass criteria frozen on \(frozenOn) from \(criteria.calibrationMealIDs.count) evaluated calibration "
-                + "meals (calibration fingerprint \(criteria.calibrationFingerprint)).",
+            "Scored on \(day(scoredOn)). Pass criteria frozen on \(day(criteria.frozenOn)) from "
+                + "\(criteria.calibrationMealIDs.count) evaluated calibration meals (calibration fingerprint "
+                + "\(criteria.calibrationFingerprint)).",
             "",
-            passed ? "**Result: passed.**" : "**Result: not passed.**",
+            passed
+                ? "**Accuracy gate: passed.** The validation supports a broad launch."
+                : "**Accuracy gate: not passed.** The validation does not support a broad launch.",
             "",
             "| Stage | Measure | Applies to | At most | Measured | Passed |",
             "|---|---|---|---:|---|---|",
@@ -95,8 +107,35 @@ extension ValidationScore {
         }
         lines += ["", "Rationale:", ""]
         lines += results.map { "- \($0.criterion.metric.title), \($0.criterion.scope.title.lowercased()): \($0.criterion.rationale)" }
-        lines += ["", ""]
+        lines += [
+            "",
+            "## Cuisine and dish-type failures",
+            "",
+            "Each criterion applied to every cuisine and dish type on its own, whatever its scope.",
+            "",
+        ]
+        lines += groupFailures.isEmpty ? ["None."] : groupFailures.map { "- \($0.description)" }
+        lines += [
+            "",
+            "## What the app may claim",
+            "",
+            "> \(reliability.statement)",
+            "",
+            "Written to estimate-reliability.json. The app's `EstimateReliability.published` must match it, and "
+                + "docs/calibration/launch-decision.md records the decision.",
+            "",
+            "",
+        ]
         return lines.joined(separator: "\n") + report.markdown
+    }
+}
+
+extension GroupFailure: CustomStringConvertible {
+    public var description: String {
+        let measure = "\(criterion.stage.title.lowercased()) \(criterion.metric.title.lowercased())"
+        let limit = "the limit of \(tenths(criterion.atMost)) for \(criterion.scope.title.lowercased())"
+        let measured = value.map { "\(measure) \(tenths($0)), over \(limit)" } ?? "\(measure) not measurable against \(limit)"
+        return "\(group) (\(grouping.title)): \(measured)."
     }
 }
 

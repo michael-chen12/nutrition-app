@@ -40,6 +40,7 @@ CalibrationPilot/
   pass-criteria.json                written when the criteria are frozen
   calibration-report.md             written by `nutrition-calibration report`
   validation-report.md              written when the validation set is scored
+  estimate-reliability.json         the accuracy claim the app may make, written with it
 ```
 
 A reference meal (`ReferenceMeal`; dates are ISO 8601):
@@ -111,7 +112,9 @@ After inspecting it, write the criteria as a JSON array of `PassCriterion`, each
 
 Metrics: `caloriesPercentError`, `proteinPercentError`, `carbohydratesPercentError`, `fatPercentError`,
 `missingFoodPercent` (percentages, 0–100), and `medianCorrectionTime` (seconds, reviewed stage only). Scopes:
-`allMeals`, `eachCuisine`, `eachDishType`. Then freeze them:
+`allMeals`, `eachCuisine`, `eachDishType`. The criteria must set a limit on calorie, protein, carbohydrate and
+fat percent error for the pre-review and the reviewed stage separately, with any scope. Missing-food and
+correction-time limits are optional, but both values appear in every report. Then freeze them:
 
 ```sh
 swift run nutrition-calibration freeze-criteria path/to/CalibrationPilot criteria.json
@@ -119,9 +122,15 @@ swift run nutrition-calibration freeze-criteria path/to/CalibrationPilot criteri
 
 Freezing is refused until every calibration meal is evaluated and the calibration set spans at least two
 cuisines and two dish types. It happens once: afterwards calibration is closed, and validation is scored only
-against those criteria and the calibration records they were set from.
+against those criteria and the calibration records they were set from. The calibration report never decides
+broad launch, and says so.
 
 ## 5. Score validation
+
+Validation meals are new meals collected for this set. They follow the rules in Section 1, and like the
+calibration set they span at least two cuisines and two dish types. A validation meal whose photo is
+byte-for-byte a calibration meal's photo is refused when its trial starts and again at scoring. That check
+cannot spot a calibration meal that was photographed again, so collect new meals.
 
 Run every validation meal in the app (Section 3), then:
 
@@ -129,11 +138,33 @@ Run every validation meal in the app (Section 3), then:
 swift run nutrition-calibration score-validation path/to/CalibrationPilot
 ```
 
-It writes `validation-report.md`: each criterion's measured values and whether it passed, followed by the
-validation accuracy report. It exits 0 only when every criterion passed. Scoring is refused before the criteria
-are frozen, while any validation meal is unevaluated, or if calibration records changed since freezing. The
-validation set is scored once; afterwards neither scoring nor freezing runs again. Deciding on broad release from
-the result is ticket #14.
+It writes `validation-report.md`. The report states whether the **accuracy gate** passed (every criterion
+passed) and gives each criterion's measured values. It then lists the **cuisine and dish-type failures**: every
+criterion applied to each cuisine and dish type on its own, so a cuisine that misses an all-meals limit is named
+even when the gate passes. The validation accuracy report follows. The command exits 0 only when the gate passed.
+
+Scoring also writes `estimate-reliability.json`, the accuracy claim the app may make (`EstimateReliability`):
+
+- `notValidated` unless the gate passed.
+- After a pass, the meal count, cuisines and dish types tested, the mean calorie error before and after review,
+  and the cuisines and dish types whose measured nutrient error went over a limit.
+
+Scoring is refused before the criteria are frozen, while any validation meal is unevaluated, if the validation
+set spans fewer than two cuisines or dish types or reuses a calibration photo, or if calibration records changed
+since freezing. The validation set is scored once; afterwards neither scoring nor freezing runs again.
 
 These checks guard the order of the study; they do not make files tamper-proof. The pilot folder's version
 history is the record of what was written when.
+
+## 6. Record the launch decision
+
+Broad launch goes ahead only if the accuracy gate passed on the validation set. Calibration results alone never
+decide it. After scoring:
+
+1. Add an entry to [`launch-decision.md`](launch-decision.md) with the date, the pilot folder's commit, the gate
+   result, the failed criteria and the cuisine and dish-type failures.
+2. Set `EstimateReliability.published` (`Sources/NutritionCore/Domain/EstimateReliability.swift`) to the
+   contents of `estimate-reliability.json`. The app shows its statement in the photo-analysis disclosure, so the
+   app's public claim matches what was measured. If the gate did not pass it stays `notValidated`.
+3. Where failures cluster in a cuisine or dish type, record the nutrition-source gap in `source-gaps.md`. A
+   validation after any fix needs new meals and a new pilot, since this validation set has been seen.

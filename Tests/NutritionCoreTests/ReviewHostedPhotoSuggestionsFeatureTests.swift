@@ -70,6 +70,18 @@ final class ReviewHostedPhotoSuggestionsFeatureTests: XCTestCase {
         XCTAssertEqual(disclosure.manualEntryButtonTitle, "Enter foods myself")
     }
 
+    /// Ticket #14: no validation has passed yet, so the app claims no accuracy beyond "approximate".
+    func test_theDisclosureMakesOnlyTheAccuracyClaimThatValidationSupports() throws {
+        let disclosure = makeWorkflow().photoAnalysisDisclosure
+
+        XCTAssertEqual(EstimateReliability.published, .notValidated)
+        XCTAssertEqual(
+            disclosure.paragraphs.last,
+            "These estimates have not yet passed an accuracy test against weighed meals, so the app makes no claim "
+                + "about how close they are. Treat them as approximate and check each food and portion."
+        )
+    }
+
     func test_noPhotoIsUploadedUntilThePersonAcceptsTheDisclosure() async throws {
         gateway.photoAnalysisResult = .success(MealPhotoAnalysisResponse(suggestions: []))
         let workflow = makeWorkflow()

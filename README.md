@@ -26,7 +26,10 @@ See `IMPLEMENTATION_PLAN.md`, `GLOSSARY.md` and `docs/adr/`.
   files came from, and `docs/calibration/source-gaps.md` records the gap they answer.
 - `Sources/NutritionCalibration/` — the accuracy calibration pilot (ADR 0002): consented reference meals, trials
   that run one through `MealEntryWorkflow` recording the pre-review and reviewed estimates, the accuracy report
-  by cuisine and dish type, and pass criteria frozen before the validation set is scored.
+  by cuisine and dish type, and pass criteria frozen before the validation set is scored. Scoring the held-out
+  validation set decides the accuracy gate for broad launch and the accuracy claim the app may make
+  (`EstimateReliability`, shown in the photo-analysis disclosure). `docs/calibration/launch-decision.md` records
+  each decision.
   `Sources/NutritionCalibrationTool/` is its `nutrition-calibration` command; the app's debug-build
   **Calibration pilot** screen runs trials. See `docs/calibration/README.md`. Its tests
   (`Tests/NutritionCalibrationTests/`) fake only `MealAnalysisGateway`.
