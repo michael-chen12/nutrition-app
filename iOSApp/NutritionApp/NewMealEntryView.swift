@@ -13,6 +13,9 @@ struct NewMealEntryView: View {
     @State private var carbohydrates: Double?
     @State private var fat: Double?
     @State private var grams: Double?
+    @State private var searchQuery = ""
+    @State private var chosenResult: FoodSearchResult?
+    @State private var chosenGrams: Double?
 
     var body: some View {
         NavigationStack {
@@ -20,6 +23,32 @@ struct NewMealEntryView: View {
                 Section("Meal photo") {
                     if let review = model.draftReview { MealPhotosView(photos: review.photos) }
                     PhotosPicker("Import photo", selection: $photoSelection, matching: .images)
+                }
+                Section("Find a documented food") {
+                    TextField("Search foods", text: $searchQuery)
+                        .submitLabel(.search)
+                        .onSubmit { Task { await model.searchFoods(matching: searchQuery) } }
+                    if let search = model.foodSearch {
+                        if let message = search.noMatchMessage {
+                            Text(message).foregroundStyle(.secondary)
+                        }
+                        ForEach(search.results) { result in
+                            Button { chosenResult = result } label: {
+                                HStack {
+                                    FoodSearchResultRow(result: result)
+                                    if result.id == chosenResult?.id {
+                                        Spacer()
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    if let chosenResult {
+                        TextField("Amount (g)", value: $chosenGrams, format: .number).keyboardType(.decimalPad)
+                        Button("Add \(chosenResult.name)", action: addChosenFood).disabled(chosenGrams == nil)
+                    }
                 }
                 Section("Custom food (per 100 g)") {
                     TextField("Food name", text: $foodName)
@@ -54,6 +83,15 @@ struct NewMealEntryView: View {
                 let fileExtension = item.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg"
                 model.importPhoto(data, fileExtension: fileExtension)
             }
+        }
+    }
+
+    private func addChosenFood() {
+        guard let chosenResult, let chosenGrams else { return }
+        model.addFood(chosenResult, grams: chosenGrams)
+        if model.errorMessage == nil {
+            self.chosenResult = nil
+            self.chosenGrams = nil
         }
     }
 

@@ -41,8 +41,22 @@ public final class MealEntryWorkflow {
 
     /// Adds a custom food with a gram amount to the draft.
     public func addCustomFood(_ customFood: CustomFood, grams: Double) throws {
-        guard grams.isFinite, grams > 0 else { throw MealEntryWorkflowError.invalidGramAmount }
-        editDraft { $0.reviewedFoods.append(ReviewedFood(food: Food(customFood), portion: Portion(grams: grams))) }
+        try addReviewedFood(Food(customFood), grams: grams)
+    }
+
+    /// Adds a food chosen from search results with a gram amount to the draft. Its nutrient values and
+    /// source reference come from the documented record.
+    public func addFood(_ searchResult: FoodSearchResult, grams: Double) throws {
+        try addReviewedFood(searchResult.food, grams: grams)
+    }
+
+    // MARK: Food search
+
+    /// Searches documented nutrition sources through the external boundary. Each result shows where
+    /// its values come from.
+    public func searchFoods(matching query: String) async throws -> FoodSearchPresentation {
+        let foods = try await gateway.searchFoods(matching: query)
+        return FoodSearchPresentation(query: query, results: foods.map(FoodSearchResult.init))
     }
 
     /// Saves the draft to meal history and closes it.
@@ -78,6 +92,11 @@ public final class MealEntryWorkflow {
     }
 
     // MARK: Private
+
+    private func addReviewedFood(_ food: Food, grams: Double) throws {
+        guard grams.isFinite, grams > 0 else { throw MealEntryWorkflowError.invalidGramAmount }
+        editDraft { $0.reviewedFoods.append(ReviewedFood(food: food, portion: Portion(grams: grams))) }
+    }
 
     private func editDraft(_ change: (inout MealEntry) -> Void) {
         if draft == nil { startNewMealEntry() }
