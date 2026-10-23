@@ -142,6 +142,21 @@ final class CorrectPortionWithServingUnitsFeatureTests: XCTestCase {
         XCTAssertEqual(workflow.draftReview?.nutritionEstimate.calories, "103 kcal")
     }
 
+    func test_changingAServingPortionToGramsOnASavedMealEntryDropsTheServingUnit() async throws {
+        let workflow = MealEntryWorkflow(store: InMemoryMealHistoryStore(), gateway: gateway)
+        let riceID = try await addWhiteRice(grams: 150, to: workflow)
+        try workflow.changePortion(of: riceID, quantity: 1.5, unit: .serving(Self.cup))
+        let id = try workflow.saveMealEntry()
+
+        try workflow.editMealEntry(id: id)
+        try workflow.changePortion(of: riceID, grams: 200)
+
+        let rice = try XCTUnwrap(workflow.draftReview?.foods.first)
+        XCTAssertEqual(rice.portion, "200 g")
+        XCTAssertEqual(rice.selectedPortionUnit, .grams)
+        XCTAssertEqual(workflow.draftReview?.nutritionEstimate.calories, "260 kcal")
+    }
+
     // MARK: Helpers
 
     private func addWhiteRice(grams: Double, to workflow: MealEntryWorkflow) async throws -> ReviewedFood.ID {

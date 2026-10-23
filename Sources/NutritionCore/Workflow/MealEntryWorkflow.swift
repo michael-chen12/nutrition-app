@@ -22,7 +22,8 @@ public final class MealEntryWorkflow {
     /// The meal entry under review, as the person sees it; nil when no meal entry is in progress.
     public var draftReview: MealEntryPresentation? {
         draft.map { entry in
-            present(entry) { photo in draftPhotoData[photo.id] ?? Data() }
+            // Photos of a reopened saved meal entry are already held by the store.
+            present(entry) { photo in draftPhotoData[photo.id] ?? (try? store.photoData(for: photo)) ?? Data() }
         }
     }
 
@@ -74,6 +75,27 @@ public final class MealEntryWorkflow {
     ) throws -> ReviewedFood.ID {
         let portion = try makePortion(quantity: quantity, unit: unit, for: searchResult.food)
         return try addReviewedFood(searchResult.food, portion: portion, shownIn: photoIDs)
+    }
+
+    /// Reopens a saved meal entry for review, discarding any unsaved draft. Its meal photos, reviewed foods,
+    /// uncertainty notes and source references come along; saving replaces the same meal entry (same
+    /// identity, same date) with a nutrition estimate recalculated from its foods at that time.
+    public func editMealEntry(id: MealEntry.ID) throws {
+        guard let entry = try store.mealEntry(id: id) else { throw MealEntryWorkflowError.mealEntryNotFound(id) }
+        draft = entry
+        draftPhotoData = [:]
+    }
+
+    /// Changes the gram amount of a food in the draft (replacing any serving unit it was entered in).
+    /// Its nutrition estimate follows the new portion.
+    public func changePortion(of foodID: ReviewedFood.ID, grams: Double) throws {
+        try changePortion(of: foodID, quantity: grams, unit: .grams)
+    }
+
+    /// Removes a food from the draft; it no longer counts toward the nutrition estimate.
+    public func removeFood(_ foodID: ReviewedFood.ID) throws {
+        let index = try draftFoodIndex(foodID)
+        editDraft { _ = $0.reviewedFoods.remove(at: index) }
     }
 
     /// Records that a food already in the draft is also visible in another meal photo (a repeated view,

@@ -5,6 +5,8 @@ import SwiftUI
 struct NewMealEntryView: View {
     @Bindable var model: MealEntryModel
     @Binding var isPresented: Bool
+    /// "New meal entry", or "Edit meal entry" when a saved meal entry was reopened for review.
+    var title = "New meal entry"
 
     @State private var photoSelection: [PhotosPickerItem] = []
     @State private var foodName = ""
@@ -88,13 +90,19 @@ struct NewMealEntryView: View {
                         ForEach(review.foods) { food in
                             Button { portionEditorFood = food } label: { ReviewedFoodRow(food: food) }
                                 .buttonStyle(.plain)
-                                .contextMenu { repeatedViewActions(for: food, in: review) }
+                                .contextMenu {
+                                    Button("Change portion") { portionEditorFood = food }
+                                    repeatedViewActions(for: food, in: review)
+                                }
+                                .swipeActions {
+                                    Button("Remove", role: .destructive) { model.removeFood(food.id) }
+                                }
                         }
                     } header: {
                         Text("Pictured food")
                     } footer: {
-                        Text("Tap a food to correct its portion. Same food in another photo? Long-press it to "
-                            + "note the photo or combine repeats.")
+                        Text("Tap a food to correct its portion in grams or a serving unit. Long-press it to note it "
+                            + "in another photo. Swipe to remove it.")
                     }
                     Section {
                         NutritionEstimateView(estimate: review.nutritionEstimate)
@@ -105,7 +113,7 @@ struct NewMealEntryView: View {
                     Text(message).foregroundStyle(.red)
                 }
             }
-            .navigationTitle("New meal entry")
+            .navigationTitle(title)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { isPresented = false } }
                 ToolbarItem(placement: .confirmationAction) {
