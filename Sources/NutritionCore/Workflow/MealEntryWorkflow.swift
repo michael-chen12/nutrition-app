@@ -63,6 +63,19 @@ public final class MealEntryWorkflow {
         try addReviewedFood(searchResult.food, grams: grams, shownIn: photoIDs)
     }
 
+    /// Adds a food chosen from search results with a portion in grams or one of its serving units
+    /// (see `FoodSearchResult.portionUnits`). A serving unit without a documented gram weight is refused.
+    @discardableResult
+    public func addFood(
+        _ searchResult: FoodSearchResult,
+        quantity: Double,
+        unit: PortionUnit,
+        shownIn photoIDs: [MealPhoto.ID] = []
+    ) throws -> ReviewedFood.ID {
+        let portion = try makePortion(quantity: quantity, unit: unit, for: searchResult.food)
+        return try addReviewedFood(searchResult.food, portion: portion, shownIn: photoIDs)
+    }
+
     /// Records that a food already in the draft is also visible in another meal photo (a repeated view,
     /// e.g. another angle). The food still counts once; the nutrition estimate does not change.
     public func markFood(_ foodID: ReviewedFood.ID, asAlsoShownIn photoID: MealPhoto.ID) throws {
@@ -91,6 +104,15 @@ public final class MealEntryWorkflow {
                 entry.reviewedFoods[keptIndex].uncertaintyNotes + repeated.uncertaintyNotes
             ).uniqued()
         }
+    }
+
+    /// Corrects a reviewed food's portion, in grams or in one of the food's serving units. The nutrition
+    /// estimate is recalculated from the effective grams; the food and its source reference are unchanged.
+    /// A serving unit without a documented gram weight is refused rather than converted by a guess.
+    public func changePortion(of foodID: ReviewedFood.ID, quantity: Double, unit: PortionUnit) throws {
+        let index = try draftFoodIndex(foodID)
+        let portion = try makePortion(quantity: quantity, unit: unit, for: draft!.reviewedFoods[index].food)
+        editDraft { $0.reviewedFoods[index].portion = portion }
     }
 
     // MARK: Food search
@@ -137,11 +159,31 @@ public final class MealEntryWorkflow {
     // MARK: Private
 
     private func addReviewedFood(_ food: Food, grams: Double, shownIn photoIDs: [MealPhoto.ID]) throws -> ReviewedFood.ID {
-        guard grams.isFinite, grams > 0 else { throw MealEntryWorkflowError.invalidGramAmount }
+        try addReviewedFood(food, portion: makePortion(quantity: grams, unit: .grams, for: food), shownIn: photoIDs)
+    }
+
+    private func addReviewedFood(_ food: Food, portion: Portion, shownIn photoIDs: [MealPhoto.ID]) throws -> ReviewedFood.ID {
         try requireDraftPhotos(photoIDs)
-        let reviewedFood = ReviewedFood(food: food, portion: Portion(grams: grams), photoIDs: photoIDs.uniqued())
+        let reviewedFood = ReviewedFood(food: food, portion: portion, photoIDs: photoIDs.uniqued())
         editDraft { $0.reviewedFoods.append(reviewedFood) }
         return reviewedFood.id
+    }
+
+    private func makePortion(quantity: Double, unit: PortionUnit, for food: Food) throws -> Portion {
+        switch unit {
+        case .grams:
+            guard quantity.isFinite, quantity > 0 else { throw MealEntryWorkflowError.invalidGramAmount }
+            return Portion(grams: quantity)
+        case .serving(let servingUnit):
+            guard food.servingUnits.contains(servingUnit) else {
+                throw MealEntryWorkflowError.servingUnitNotAvailable(unitName: servingUnit.name)
+            }
+            guard quantity.isFinite, quantity > 0 else { throw MealEntryWorkflowError.invalidServingQuantity }
+            guard let portion = Portion(quantity: quantity, of: servingUnit) else {
+                throw MealEntryWorkflowError.servingConversionUnavailable(unitName: servingUnit.name)
+            }
+            return portion
+        }
     }
 
     private func editDraft(_ change: (inout MealEntry) -> Void) {
@@ -186,6 +228,12 @@ public enum MealEntryWorkflowError: Error, Equatable {
     case photoNotInMealEntry(MealPhoto.ID)
     /// The referenced food is not part of the meal entry under review.
     case foodNotInMealEntry(ReviewedFood.ID)
+    /// The serving unit has no documented gram weight, so it cannot be converted; enter grams instead.
+    case servingConversionUnavailable(unitName: String)
+    /// A serving quantity must be a positive, finite number.
+    case invalidServingQuantity
+    /// The serving unit is not one documented for this food.
+    case servingUnitNotAvailable(unitName: String)
 }
 
 extension Array where Element: Hashable {

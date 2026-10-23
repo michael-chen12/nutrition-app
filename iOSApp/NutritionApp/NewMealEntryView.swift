@@ -16,6 +16,8 @@ struct NewMealEntryView: View {
     @State private var searchQuery = ""
     @State private var chosenResult: FoodSearchResult?
     @State private var chosenGrams: Double?
+    @State private var chosenUnit: PortionUnit = .grams
+    @State private var portionEditorFood: PresentedReviewedFood?
     @State private var foodPhotoIDs: Set<MealPhoto.ID> = []
     @State private var photoCapture: MealPhotoCaptureModel?
     @State private var isPickingFromLibrary = false
@@ -41,7 +43,10 @@ struct NewMealEntryView: View {
                             Text(message).foregroundStyle(.secondary)
                         }
                         ForEach(search.results) { result in
-                            Button { chosenResult = result } label: {
+                            Button {
+                                chosenResult = result
+                                chosenUnit = .grams
+                            } label: {
                                 HStack {
                                     FoodSearchResultRow(result: result)
                                     if result.id == chosenResult?.id {
@@ -54,8 +59,11 @@ struct NewMealEntryView: View {
                         }
                     }
                     if let chosenResult {
-                        TextField("Amount (g)", value: $chosenGrams, format: .number).keyboardType(.decimalPad)
-                        Button("Add \(chosenResult.name)", action: addChosenFood).disabled(chosenGrams == nil)
+                        let portion = PortionFields(
+                            units: chosenResult.portionUnits, unit: $chosenUnit, quantity: $chosenGrams
+                        )
+                        portion
+                        Button("Add \(chosenResult.name)", action: addChosenFood).disabled(!portion.canSubmit)
                     }
                 }
                 Section("Custom food (per 100 g)") {
@@ -78,12 +86,15 @@ struct NewMealEntryView: View {
                 if let review = model.draftReview, !review.foods.isEmpty {
                     Section {
                         ForEach(review.foods) { food in
-                            ReviewedFoodRow(food: food).contextMenu { repeatedViewActions(for: food, in: review) }
+                            Button { portionEditorFood = food } label: { ReviewedFoodRow(food: food) }
+                                .buttonStyle(.plain)
+                                .contextMenu { repeatedViewActions(for: food, in: review) }
                         }
                     } header: {
                         Text("Pictured food")
                     } footer: {
-                        Text("Same food in another photo? Long-press it to note the photo or combine repeats.")
+                        Text("Tap a food to correct its portion. Same food in another photo? Long-press it to "
+                            + "note the photo or combine repeats.")
                     }
                     Section {
                         NutritionEstimateView(estimate: review.nutritionEstimate)
@@ -110,6 +121,9 @@ struct NewMealEntryView: View {
                     model.refreshDraftReview()
                     isPickingFromLibrary = choosePhotoLibrary
                 }
+            }
+            .sheet(item: $portionEditorFood) { food in
+                PortionEditorView(model: model, food: food)
             }
             .photosPicker(isPresented: $isPickingFromLibrary, selection: $photoSelection, matching: .images)
             .onChange(of: photoSelection) { _, items in
@@ -143,10 +157,11 @@ struct NewMealEntryView: View {
 
     private func addChosenFood() {
         guard let chosenResult, let chosenGrams else { return }
-        model.addFood(chosenResult, grams: chosenGrams)
+        model.addFood(chosenResult, quantity: chosenGrams, unit: chosenUnit)
         if model.errorMessage == nil {
             self.chosenResult = nil
             self.chosenGrams = nil
+            chosenUnit = .grams
         }
     }
 

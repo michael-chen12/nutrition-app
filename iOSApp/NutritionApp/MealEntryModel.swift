@@ -72,6 +72,17 @@ final class MealEntryModel {
         draftReview = workflow.draftReview
     }
 
+    func addFood(_ result: FoodSearchResult, quantity: Double, unit: PortionUnit) {
+        perform { _ = try workflow.addFood(result, quantity: quantity, unit: unit) }
+        draftReview = workflow.draftReview
+    }
+
+    /// Corrects a reviewed food's portion in grams or a serving unit; the estimate updates immediately.
+    func changePortion(of foodID: ReviewedFood.ID, quantity: Double, unit: PortionUnit) {
+        perform { try workflow.changePortion(of: foodID, quantity: quantity, unit: unit) }
+        draftReview = workflow.draftReview
+    }
+
     func save() {
         perform { _ = try workflow.saveMealEntry() }
         draftReview = workflow.draftReview
@@ -94,6 +105,10 @@ final class MealEntryModel {
             errorMessage = nil
         } catch MealEntryWorkflowError.invalidGramAmount {
             errorMessage = "Enter a gram amount greater than zero."
+        } catch MealEntryWorkflowError.invalidServingQuantity {
+            errorMessage = "Enter a serving amount greater than zero."
+        } catch MealEntryWorkflowError.servingConversionUnavailable(let unitName) {
+            errorMessage = "No gram weight is documented for \(unitName). Enter grams instead."
         } catch {
             errorMessage = "Something went wrong. Please try again."
         }

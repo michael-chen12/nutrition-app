@@ -32,8 +32,13 @@ public struct PresentedMealPhoto: Hashable, Identifiable, Sendable {
 public struct PresentedReviewedFood: Hashable, Identifiable, Sendable {
     public var id: ReviewedFood.ID
     public var name: String
-    /// e.g. "180 g".
+    /// e.g. "180 g", or "1.5 cup (237 g)" for a serving unit with its effective grams.
     public var portion: String
+    /// The unit the portion was entered in, and the amount in that unit (servings or grams).
+    public var selectedPortionUnit: PortionUnit
+    public var portionQuantity: Double
+    /// Units the portion can be corrected in: grams first, then the food's serving units.
+    public var portionUnits: [PresentedPortionUnit]
     /// "Custom food", or the documented source's name.
     public var sourceName: String
     /// The documented record's identifier within its source (e.g. an FDC ID); nil for a custom food.
@@ -47,10 +52,51 @@ public struct PresentedReviewedFood: Hashable, Identifiable, Sendable {
         shownIn = PhotoReferenceFormat.shownIn(reviewedFood.photoIDs.compactMap { photoNumbers[$0] })
         id = reviewedFood.id
         name = reviewedFood.food.name
-        portion = NutrientFormat.grams(reviewedFood.portion.grams)
+        portion = PortionFormat.portion(reviewedFood.portion)
+        selectedPortionUnit = reviewedFood.portion.unit
+        portionQuantity = reviewedFood.portion.quantity
+        portionUnits = PresentedPortionUnit.options(for: reviewedFood.food)
         (sourceName, sourceRecordID) = reviewedFood.food.source.presentedProvenance
         nutritionEstimate = PresentedNutritionEstimate(reviewedFood.nutritionEstimate)
         uncertaintyNotes = reviewedFood.uncertaintyNotes.map(\.detail)
+    }
+}
+
+/// A unit a food's portion can be entered in, as the person sees it. Pass `unit` back to
+/// `MealEntryWorkflow.changePortion(of:quantity:unit:)`.
+public struct PresentedPortionUnit: Hashable, Identifiable, Sendable {
+    public var id: PortionUnit { unit }
+    public var unit: PortionUnit
+    /// "g", or the serving unit's name, e.g. "cup".
+    public var name: String
+    /// The documented conversion, e.g. "1 cup = 158 g"; nil for grams and for units without a known gram weight.
+    public var quantityBasis: String?
+    /// Shown instead of a quantity basis when the source documents no gram weight for the unit. Such a unit
+    /// cannot be chosen: the conversion would be a guess.
+    public var conversionUnavailableNote: String?
+
+    init(_ unit: PortionUnit) {
+        self.unit = unit
+        quantityBasis = nil
+        conversionUnavailableNote = nil
+        switch unit {
+        case .grams:
+            name = "g"
+        case .serving(let servingUnit):
+            name = servingUnit.name
+            if servingUnit.gramsPerUnit != nil, let basis = servingUnit.quantityBasis,
+               let gramWeight = servingUnit.gramWeight {
+                quantityBasis = "\(PortionFormat.quantity(basis)) \(servingUnit.name) = \(NutrientFormat.grams(gramWeight))"
+            } else {
+                conversionUnavailableNote = "No gram weight is documented for \(servingUnit.name), "
+                    + "so it can't be converted. Enter grams instead."
+            }
+        }
+    }
+
+    /// Grams first, then the food's serving units in source order.
+    static func options(for food: Food) -> [PresentedPortionUnit] {
+        [PresentedPortionUnit(.grams)] + food.servingUnits.map { PresentedPortionUnit(.serving($0)) }
     }
 }
 
@@ -95,12 +141,15 @@ public struct FoodSearchResult: Hashable, Identifiable, Sendable {
     public var sourceName: String
     /// The record's identifier within that source, e.g. an FDC ID.
     public var sourceRecordID: String?
+    /// Units the food can be added in: grams first, then its documented serving units.
+    public var portionUnits: [PresentedPortionUnit]
     /// The food the person chooses; handed back to `MealEntryWorkflow.addFood(_:grams:)`.
     let food: Food
 
     init(_ food: Food) {
         self.food = food
         name = food.name
+        portionUnits = PresentedPortionUnit.options(for: food)
         (sourceName, sourceRecordID) = food.source.presentedProvenance
     }
 }
@@ -132,6 +181,26 @@ enum PhotoReferenceFormat {
         guard let last = sorted.last else { return nil }
         if sorted.count == 1 { return "Photo \(last)" }
         return "Photos \(sorted.dropLast().joined(separator: ", ")) and \(last)"
+    }
+}
+
+enum PortionFormat {
+    /// "180 g" for grams entered directly; "1.5 cup (237 g)" for a serving unit, with its effective grams.
+    static func portion(_ portion: Portion) -> String {
+        let grams = NutrientFormat.grams(portion.grams)
+        guard let serving = portion.serving else { return grams }
+        return "\(quantity(serving.quantity)) \(serving.unit.name) (\(grams))"
+    }
+
+    /// Up to two decimal places, without trailing zeros: "1", "1.5", "0.25".
+    static func quantity(_ value: Double) -> String {
+        let hundredths = Int((value * 100).rounded())
+        var text = "\(hundredths / 100)"
+        let fraction = abs(hundredths % 100)
+        if fraction != 0 {
+            text += fraction % 10 == 0 ? ".\(fraction / 10)" : (fraction < 10 ? ".0\(fraction)" : ".\(fraction)")
+        }
+        return text
     }
 }
 

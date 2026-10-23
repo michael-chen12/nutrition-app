@@ -69,13 +69,53 @@ public struct ReviewedFood: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
-/// The reviewed quantity of a food. Grams are the calculation basis for every portion.
+/// The reviewed quantity of a food. Grams are the calculation basis for every portion; a portion the person
+/// entered in a serving unit also keeps that unit and quantity, with `grams` as its effective gram amount.
 public struct Portion: Codable, Hashable, Sendable {
+    /// Effective grams: what the nutrition estimate is calculated from.
     public var grams: Double
+    /// The serving unit and quantity the person chose; nil when they entered grams directly.
+    public var serving: ServingPortion?
 
     public init(grams: Double) {
         self.grams = grams
+        serving = nil
     }
+
+    /// A portion of `quantity` servings of `unit`, converted through the unit's documented gram weight.
+    /// Returns nil when the unit has no known gram weight, since the conversion would be a guess.
+    public init?(quantity: Double, of unit: ServingUnit) {
+        guard let gramsPerUnit = unit.gramsPerUnit else { return nil }
+        grams = quantity * gramsPerUnit
+        serving = ServingPortion(unit: unit, quantity: quantity)
+    }
+
+    /// The unit the person chose for this portion.
+    public var unit: PortionUnit {
+        serving.map { .serving($0.unit) } ?? .grams
+    }
+
+    /// The amount in `unit`: servings, or grams.
+    public var quantity: Double {
+        serving?.quantity ?? grams
+    }
+}
+
+/// A quantity of a serving unit, e.g. 1.5 cups.
+public struct ServingPortion: Codable, Hashable, Sendable {
+    public var unit: ServingUnit
+    public var quantity: Double
+
+    public init(unit: ServingUnit, quantity: Double) {
+        self.unit = unit
+        self.quantity = quantity
+    }
+}
+
+/// The unit a portion is entered in: grams, or one of the food's serving units.
+public enum PortionUnit: Hashable, Sendable {
+    case grams
+    case serving(ServingUnit)
 }
 
 /// A specific unresolved detail about a reviewed food (ingredient, preparation or portion).
