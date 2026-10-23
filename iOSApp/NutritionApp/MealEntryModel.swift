@@ -28,8 +28,20 @@ final class MealEntryModel {
         draftReview = workflow.draftReview
     }
 
-    func addCustomFood(_ customFood: CustomFood, grams: Double) {
-        perform { try workflow.addCustomFood(customFood, grams: grams) }
+    func addCustomFood(_ customFood: CustomFood, grams: Double, shownIn photoIDs: [MealPhoto.ID] = []) {
+        perform { _ = try workflow.addCustomFood(customFood, grams: grams, shownIn: photoIDs) }
+        draftReview = workflow.draftReview
+    }
+
+    /// The same food seen from another angle: note the photo without counting the food again.
+    func markFood(_ foodID: ReviewedFood.ID, asAlsoShownIn photoID: MealPhoto.ID) {
+        perform { try workflow.markFood(foodID, asAlsoShownIn: photoID) }
+        draftReview = workflow.draftReview
+    }
+
+    /// A food entered again from another photo is the same food: combine so it counts once.
+    func combineFood(_ repeatedFoodID: ReviewedFood.ID, into keptFoodID: ReviewedFood.ID) {
+        perform { try workflow.combineFood(repeatedFoodID, into: keptFoodID) }
         draftReview = workflow.draftReview
     }
 
@@ -45,7 +57,7 @@ final class MealEntryModel {
     }
 
     func addFood(_ result: FoodSearchResult, grams: Double) {
-        perform { try workflow.addFood(result, grams: grams) }
+        perform { _ = try workflow.addFood(result, grams: grams) }
         draftReview = workflow.draftReview
     }
 

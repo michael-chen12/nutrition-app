@@ -8,11 +8,25 @@ public struct MealEntryPresentation: Hashable, Identifiable, Sendable {
     public var photos: [PresentedMealPhoto]
     public var foods: [PresentedReviewedFood]
     public var nutritionEstimate: PresentedNutritionEstimate
+    /// Explains what the estimate covers: all pictured food, each food once (see docs/adr/0004).
+    public var picturedFoodNote = "This estimate covers all pictured food, including food that was shared or "
+        + "left uneaten. Food seen in more than one photo counts once."
 }
 
 public struct PresentedMealPhoto: Hashable, Identifiable, Sendable {
     public var id: MealPhoto.ID
+    /// Position of the photo in the meal entry, starting at 1.
+    public var number: Int
+    /// e.g. "Photo 2"; matches the photo references in `PresentedReviewedFood.shownIn`.
+    public var label: String
     public var imageData: Data
+
+    init(id: MealPhoto.ID, number: Int, imageData: Data) {
+        self.id = id
+        self.number = number
+        label = "Photo \(number)"
+        self.imageData = imageData
+    }
 }
 
 public struct PresentedReviewedFood: Hashable, Identifiable, Sendable {
@@ -26,8 +40,11 @@ public struct PresentedReviewedFood: Hashable, Identifiable, Sendable {
     public var sourceRecordID: String?
     public var nutritionEstimate: PresentedNutritionEstimate
     public var uncertaintyNotes: [String]
+    /// Which meal photos show this food, e.g. "Photos 1 and 2"; nil when no photo is noted.
+    public var shownIn: String?
 
-    init(_ reviewedFood: ReviewedFood) {
+    init(_ reviewedFood: ReviewedFood, photoNumbers: [MealPhoto.ID: Int] = [:]) {
+        shownIn = PhotoReferenceFormat.shownIn(reviewedFood.photoIDs.compactMap { photoNumbers[$0] })
         id = reviewedFood.id
         name = reviewedFood.food.name
         portion = NutrientFormat.grams(reviewedFood.portion.grams)
@@ -106,6 +123,16 @@ public struct MealHistoryRow: Hashable, Identifiable, Sendable {
     public var date: Date
     public var foodNames: [String]
     public var nutritionEstimate: PresentedNutritionEstimate
+}
+
+enum PhotoReferenceFormat {
+    /// "Photo 3", "Photos 1 and 2", "Photos 1, 2 and 4"; nil for no photos.
+    static func shownIn(_ numbers: [Int]) -> String? {
+        let sorted = numbers.sorted().map(String.init)
+        guard let last = sorted.last else { return nil }
+        if sorted.count == 1 { return "Photo \(last)" }
+        return "Photos \(sorted.dropLast().joined(separator: ", ")) and \(last)"
+    }
 }
 
 enum NutrientFormat {
