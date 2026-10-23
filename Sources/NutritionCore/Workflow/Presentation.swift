@@ -27,6 +27,11 @@ public struct PresentedMealPhoto: Hashable, Identifiable, Sendable {
         label = "Photo \(number)"
         self.imageData = imageData
     }
+
+    /// Each meal photo's number, by its position in the meal entry starting at 1.
+    static func numbers(of photos: [MealPhoto]) -> [MealPhoto.ID: Int] {
+        Dictionary(uniqueKeysWithValues: photos.enumerated().map { ($1.id, $0 + 1) })
+    }
 }
 
 public struct PresentedReviewedFood: Hashable, Identifiable, Sendable {

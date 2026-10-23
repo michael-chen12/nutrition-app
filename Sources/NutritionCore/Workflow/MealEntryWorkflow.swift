@@ -270,7 +270,7 @@ public final class MealEntryWorkflow {
     }
 
     private func present(_ entry: MealEntry, photoData: (MealPhoto) throws -> Data) rethrows -> MealEntryPresentation {
-        let photoNumbers = Dictionary(uniqueKeysWithValues: entry.photos.enumerated().map { ($1.id, $0 + 1) })
+        let photoNumbers = PresentedMealPhoto.numbers(of: entry.photos)
         return MealEntryPresentation(
             id: entry.id,
             date: entry.date,

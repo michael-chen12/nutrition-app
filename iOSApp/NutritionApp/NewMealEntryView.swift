@@ -9,12 +9,6 @@ struct NewMealEntryView: View {
     var title = "New meal entry"
 
     @State private var photoSelection: [PhotosPickerItem] = []
-    @State private var foodName = ""
-    @State private var calories: Double?
-    @State private var protein: Double?
-    @State private var carbohydrates: Double?
-    @State private var fat: Double?
-    @State private var grams: Double?
     @State private var searchQuery = ""
     @State private var chosenResult: FoodSearchResult?
     @State private var chosenGrams: Double?
@@ -82,13 +76,7 @@ struct NewMealEntryView: View {
                 } footer: {
                     Text("You can also add oils, sauces or drinks the photos don't show.")
                 }
-                Section("Custom food (per 100 g)") {
-                    TextField("Food name", text: $foodName)
-                    TextField("Calories (kcal)", value: $calories, format: .number).keyboardType(.decimalPad)
-                    TextField("Protein (g)", value: $protein, format: .number).keyboardType(.decimalPad)
-                    TextField("Carbohydrates (g)", value: $carbohydrates, format: .number).keyboardType(.decimalPad)
-                    TextField("Fat (g)", value: $fat, format: .number).keyboardType(.decimalPad)
-                    TextField("Amount (g)", value: $grams, format: .number).keyboardType(.decimalPad)
+                CustomFoodSection(title: "Custom food (per 100 g)", submitTitle: "Add food", submit: addCustomFood) {
                     ForEach(model.draftReview?.photos ?? []) { photo in
                         Toggle("Shown in \(photo.label)", isOn: Binding(
                             get: { foodPhotoIDs.contains(photo.id) },
@@ -97,7 +85,6 @@ struct NewMealEntryView: View {
                             }
                         ))
                     }
-                    Button("Add food", action: addFood).disabled(foodName.isEmpty || grams == nil)
                 }
                 if let review = model.draftReview, !review.foods.isEmpty {
                     Section {
@@ -191,19 +178,9 @@ struct NewMealEntryView: View {
         }
     }
 
-    private func addFood() {
-        guard let grams else { return }
+    private func addCustomFood(_ customFood: CustomFood, grams: Double) {
         let photoOrder = model.draftReview?.photos.map(\.id) ?? []
-        model.addCustomFood(
-            CustomFood(
-                name: foodName,
-                nutrientsPer100g: NutrientsPer100g(
-                    calories: calories ?? 0, protein: protein ?? 0, carbohydrates: carbohydrates ?? 0, fat: fat ?? 0
-                )
-            ),
-            grams: grams,
-            shownIn: photoOrder.filter(foodPhotoIDs.contains)
-        )
+        model.addCustomFood(customFood, grams: grams, shownIn: photoOrder.filter(foodPhotoIDs.contains))
         if model.errorMessage == nil { foodPhotoIDs = [] }
     }
 }

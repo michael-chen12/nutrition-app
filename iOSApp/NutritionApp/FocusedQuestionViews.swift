@@ -50,12 +50,6 @@ struct FocusedQuestionAnswerView: View {
     @State private var quantity: Double?
     @State private var portionUnit: PortionUnit = .grams
     @State private var portionQuantity: Double?
-    @State private var customName = ""
-    @State private var calories: Double?
-    @State private var protein: Double?
-    @State private var carbohydrates: Double?
-    @State private var fat: Double?
-    @State private var customGrams: Double?
 
     var body: some View {
         NavigationStack {
@@ -101,15 +95,9 @@ struct FocusedQuestionAnswerView: View {
                         .disabled(!fields.canSubmit)
                     }
                 }
-                Section("Or add a custom food (per 100 g)") {
-                    TextField("Food name", text: $customName)
-                    TextField("Calories (kcal)", value: $calories, format: .number).keyboardType(.decimalPad)
-                    TextField("Protein (g)", value: $protein, format: .number).keyboardType(.decimalPad)
-                    TextField("Carbohydrates (g)", value: $carbohydrates, format: .number).keyboardType(.decimalPad)
-                    TextField("Fat (g)", value: $fat, format: .number).keyboardType(.decimalPad)
-                    TextField("Amount (g)", value: $customGrams, format: .number).keyboardType(.decimalPad)
-                    Button("Add custom food", action: addCustomFood).disabled(customName.isEmpty || customGrams == nil)
-                }
+                CustomFoodSection(
+                    title: "Or add a custom food (per 100 g)", submitTitle: "Add custom food", submit: addCustomFood
+                )
                 Section {
                     Button("Doesn't apply") {
                         model.dismissQuestion(question.id)
@@ -140,18 +128,8 @@ struct FocusedQuestionAnswerView: View {
         }
     }
 
-    private func addCustomFood() {
-        guard let customGrams else { return }
-        model.answerQuestion(
-            question.id,
-            byAddingCustomFood: CustomFood(
-                name: customName,
-                nutrientsPer100g: NutrientsPer100g(
-                    calories: calories ?? 0, protein: protein ?? 0, carbohydrates: carbohydrates ?? 0, fat: fat ?? 0
-                )
-            ),
-            grams: customGrams
-        )
+    private func addCustomFood(_ customFood: CustomFood, grams: Double) {
+        model.answerQuestion(question.id, byAddingCustomFood: customFood, grams: grams)
         if model.errorMessage == nil { dismiss() }
     }
 }

@@ -125,12 +125,6 @@ struct SuggestionReviewView: View {
     @State private var unit: PortionUnit = .grams
     @State private var quantity: Double?
     @State private var searchQuery = ""
-    @State private var customName = ""
-    @State private var calories: Double?
-    @State private var protein: Double?
-    @State private var carbohydrates: Double?
-    @State private var fat: Double?
-    @State private var customGrams: Double?
 
     var body: some View {
         NavigationStack {
@@ -180,16 +174,12 @@ struct SuggestionReviewView: View {
                         .disabled(!fields.canSubmit)
                     }
                 }
-                Section("Or accept as a custom food (per 100 g)") {
-                    TextField("Food name", text: $customName)
-                    TextField("Calories (kcal)", value: $calories, format: .number).keyboardType(.decimalPad)
-                    TextField("Protein (g)", value: $protein, format: .number).keyboardType(.decimalPad)
-                    TextField("Carbohydrates (g)", value: $carbohydrates, format: .number).keyboardType(.decimalPad)
-                    TextField("Fat (g)", value: $fat, format: .number).keyboardType(.decimalPad)
-                    TextField("Amount (g)", value: $customGrams, format: .number).keyboardType(.decimalPad)
-                    Button("Accept as custom food", action: acceptCustomFood)
-                        .disabled(customName.isEmpty || customGrams == nil)
-                }
+                CustomFoodSection(
+                    title: "Or accept as a custom food (per 100 g)",
+                    submitTitle: "Accept as custom food",
+                    suggestedName: suggestion.name,
+                    submit: acceptCustomFood
+                )
                 if suggestion.likelyDuplicateNote != nil {
                     Section {
                         Button("Separate into one food per photo") {
@@ -215,7 +205,6 @@ struct SuggestionReviewView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
             }
-            .onAppear { customName = suggestion.name }
         }
     }
 
@@ -225,18 +214,8 @@ struct SuggestionReviewView: View {
         self.quantity = quantity
     }
 
-    private func acceptCustomFood() {
-        guard let customGrams else { return }
-        model.acceptSuggestion(
-            suggestion.id,
-            asCustomFood: CustomFood(
-                name: customName,
-                nutrientsPer100g: NutrientsPer100g(
-                    calories: calories ?? 0, protein: protein ?? 0, carbohydrates: carbohydrates ?? 0, fat: fat ?? 0
-                )
-            ),
-            grams: customGrams
-        )
+    private func acceptCustomFood(_ customFood: CustomFood, grams: Double) {
+        model.acceptSuggestion(suggestion.id, asCustomFood: customFood, grams: grams)
         if model.errorMessage == nil { dismiss() }
     }
 }

@@ -131,13 +131,12 @@ extension MealEntryWorkflow {
                 lookedUp.append(await lookUp(suggestion, photoIDs: suggestionPhotoIDs, cache: &matchesByQuery))
             }
             newSuggestions = Self.groupingLikelyDuplicates(lookedUp, hints: response.duplicateGroups)
-            if newSuggestions.isEmpty { message = PhotoAnalysisMessage.noFoodFound }
+            if newSuggestions.isEmpty { message = PhotoAnalysisMessage.noFoodFound(photoCount: photos.count) }
         } catch MealAnalysisGatewayError.malformedAnalysis {
-            message = PhotoAnalysisMessage.malformed
+            message = PhotoAnalysisMessage.malformed(photoCount: photos.count)
         } catch {
-            message = PhotoAnalysisMessage.unavailable
+            message = PhotoAnalysisMessage.unavailable(photoCount: photos.count)
         }
-        if photos.count > 1 { message = message.map(PhotoAnalysisMessage.forSeveralPhotos) }
 
         // The person may have moved on to another meal entry while the photo was being analyzed.
         guard draft?.id == entry.id else { throw MealEntryWorkflowError.noMealEntryInProgress }
@@ -292,9 +291,7 @@ extension MealEntryWorkflow {
     // MARK: Presentation
 
     private func present(_ state: PhotoSuggestionState) -> PhotoAnalysisPresentation {
-        let photoNumbers = Dictionary(
-            uniqueKeysWithValues: (draft?.photos ?? []).enumerated().map { ($1.id, $0 + 1) }
-        )
+        let photoNumbers = PresentedMealPhoto.numbers(of: draft?.photos ?? [])
         return PhotoAnalysisPresentation(
             suggestions: state.pending.map { PresentedFoodSuggestion($0, photoNumbers: photoNumbers) },
             message: state.message
@@ -383,28 +380,25 @@ private struct PortionUnitName {
     func matches(_ other: PortionUnitName) -> Bool { base == other.base }
 }
 
+/// Why an analysis of `photoCount` photos produced no suggestions, worded for one photo or several.
 enum PhotoAnalysisMessage {
-    static let unavailable = "Photo analysis isn't available right now. Your photo is still in this meal entry: "
-        + "search for foods or add a custom food to finish it."
-    static let malformed = "Photo analysis returned results the app couldn't use. Your photo is still in this "
-        + "meal entry: search for foods or add a custom food to finish it."
-    static let noFoodFound = "Photo analysis found no food in this photo. Search for foods or add a custom food "
-        + "instead."
+    static func unavailable(photoCount: Int) -> String {
+        "Photo analysis isn't available right now. \(stillInMealEntry(photoCount)): "
+            + "search for foods or add a custom food to finish it."
+    }
 
-    /// The message as worded for an analysis of several photos.
-    static func forSeveralPhotos(_ message: String) -> String {
-        switch message {
-        case unavailable:
-            return "Photo analysis isn't available right now. Your photos are still in this meal entry: "
-                + "search for foods or add a custom food to finish it."
-        case malformed:
-            return "Photo analysis returned results the app couldn't use. Your photos are still in this "
-                + "meal entry: search for foods or add a custom food to finish it."
-        case noFoodFound:
-            return "Photo analysis found no food in these photos. Search for foods or add a custom food instead."
-        default:
-            return message
-        }
+    static func malformed(photoCount: Int) -> String {
+        "Photo analysis returned results the app couldn't use. \(stillInMealEntry(photoCount)): "
+            + "search for foods or add a custom food to finish it."
+    }
+
+    static func noFoodFound(photoCount: Int) -> String {
+        "Photo analysis found no food in \(photoCount == 1 ? "this photo" : "these photos"). "
+            + "Search for foods or add a custom food instead."
+    }
+
+    private static func stillInMealEntry(_ photoCount: Int) -> String {
+        photoCount == 1 ? "Your photo is still in this meal entry" : "Your photos are still in this meal entry"
     }
 }
 

@@ -65,16 +65,18 @@ extension MealEntryWorkflow {
 
     /// The draft food the open question is about.
     private func foodAsked(_ questionID: UncertaintyNote.ID) throws -> ReviewedFood {
-        guard let food = draft?.reviewedFoods.first(where: { $0.uncertaintyNotes.contains { $0.id == questionID } })
-        else { throw MealEntryWorkflowError.questionNotFound(questionID) }
-        return food
+        guard let index = indexOfFoodAsked(questionID) else { throw MealEntryWorkflowError.questionNotFound(questionID) }
+        return draft!.reviewedFoods[index]
     }
 
     private func resolveQuestion(_ questionID: UncertaintyNote.ID) {
-        guard let index = draft?.reviewedFoods.firstIndex(where: {
-            $0.uncertaintyNotes.contains { $0.id == questionID }
-        }) else { return }
+        guard let index = indexOfFoodAsked(questionID) else { return }
         draft!.reviewedFoods[index].uncertaintyNotes.removeAll { $0.id == questionID }
+    }
+
+    /// Where in the draft the food with this open question is; nil when no food has it.
+    private func indexOfFoodAsked(_ questionID: UncertaintyNote.ID) -> Int? {
+        draft?.reviewedFoods.firstIndex { $0.uncertaintyNotes.contains { $0.id == questionID } }
     }
 }
 
