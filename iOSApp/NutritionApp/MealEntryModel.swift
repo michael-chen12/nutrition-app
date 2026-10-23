@@ -28,6 +28,17 @@ final class MealEntryModel {
         draftReview = workflow.draftReview
     }
 
+    /// A camera capture that adds its photo to this draft meal entry, the same way as an imported photo.
+    func makePhotoCapture() -> MealPhotoCaptureModel {
+        let camera = AVFoundationMealPhotoCamera()
+        return MealPhotoCaptureModel(camera: camera, capture: MealPhotoCapture(camera: camera, mealEntry: workflow))
+    }
+
+    /// Republishes the draft after the camera capture closes.
+    func refreshDraftReview() {
+        draftReview = workflow.draftReview
+    }
+
     func addCustomFood(_ customFood: CustomFood, grams: Double) {
         perform { try workflow.addCustomFood(customFood, grams: grams) }
         draftReview = workflow.draftReview

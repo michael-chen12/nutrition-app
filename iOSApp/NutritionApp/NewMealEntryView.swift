@@ -13,6 +13,8 @@ struct NewMealEntryView: View {
     @State private var carbohydrates: Double?
     @State private var fat: Double?
     @State private var grams: Double?
+    @State private var photoCapture: MealPhotoCaptureModel?
+    @State private var isPickingFromLibrary = false
 
     var body: some View {
         NavigationStack {
@@ -20,6 +22,7 @@ struct NewMealEntryView: View {
                 Section("Meal photo") {
                     if let review = model.draftReview { MealPhotosView(photos: review.photos) }
                     PhotosPicker("Import photo", selection: $photoSelection, matching: .images)
+                    Button("Take photo") { photoCapture = model.makePhotoCapture() }
                 }
                 Section("Custom food (per 100 g)") {
                     TextField("Food name", text: $foodName)
@@ -48,6 +51,14 @@ struct NewMealEntryView: View {
                     }
                 }
             }
+            .fullScreenCover(item: $photoCapture) { capture in
+                MealPhotoCaptureView(model: capture) { choosePhotoLibrary in
+                    photoCapture = nil
+                    model.refreshDraftReview()
+                    isPickingFromLibrary = choosePhotoLibrary
+                }
+            }
+            .photosPicker(isPresented: $isPickingFromLibrary, selection: $photoSelection, matching: .images)
             .task(id: photoSelection) {
                 guard let item = photoSelection,
                       let data = try? await item.loadTransferable(type: Data.self) else { return }
