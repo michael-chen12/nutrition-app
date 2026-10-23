@@ -70,6 +70,21 @@ extension MealEntryWorkflow {
         return try accept(pending, as: food, portion: try makePortion(quantity: grams, unit: .grams, for: food))
     }
 
+    /// Separates a suggestion that joins likely views of the same food into one suggestion per view, in its
+    /// place, when they are in fact different foods (e.g. two plates of the same dish). Each is then reviewed
+    /// and counted on its own. Returns the separate suggestions; a suggestion with no views to separate
+    /// stays as it is.
+    @discardableResult
+    public func separateSuggestion(_ suggestionID: PresentedFoodSuggestion.ID) throws -> [PresentedFoodSuggestion.ID] {
+        let pending = try pendingSuggestion(suggestionID)
+        guard let views = pending.likelyDuplicates?.views,
+              let index = photoSuggestions?.pending.firstIndex(where: { $0.id == suggestionID }) else {
+            return [suggestionID]
+        }
+        photoSuggestions?.pending.replaceSubrange(index...index, with: views)
+        return views.map(\.id)
+    }
+
     /// Rejects a suggestion: it is not added to the meal entry.
     public func rejectSuggestion(_ suggestionID: PresentedFoodSuggestion.ID) throws {
         _ = try pendingSuggestion(suggestionID)
@@ -78,8 +93,12 @@ extension MealEntryWorkflow {
 
     // MARK: Analysis
 
-    /// One analysis of the given draft photos. Multi-photo reconciliation can build on this.
-    func analyzePhotos(_ photoIDs: [MealPhoto.ID]) async throws -> PhotoAnalysisPresentation {
+    /// Uploads several draft meal photos together for one hosted analysis: other angles of the same food and
+    /// additional dishes. Suggestions the analysis finds likely to be the same food seen in different photos
+    /// are grouped into one suggestion that counts once unless the person separates it
+    /// (`separateSuggestion(_:)`); distinct foods stay separate. Failures behave as in `analyzePhoto(_:)`.
+    @discardableResult
+    public func analyzePhotos(_ photoIDs: [MealPhoto.ID]) async throws -> PhotoAnalysisPresentation {
         guard photoAnalysisDisclosureAccepted else { throw MealEntryWorkflowError.photoAnalysisDisclosureNotAccepted }
         try requireDraftPhotos(photoIDs)
         guard let entry = draft, !photoIDs.isEmpty else { throw MealEntryWorkflowError.noMealEntryInProgress }
@@ -97,15 +116,19 @@ extension MealEntryWorkflow {
         do {
             let response = try await gateway.analyzeMealPhotos(request)
             let suggestions = try Self.validated(response, photos: photos)
+            var lookedUp: [PendingSuggestion] = []
+            var matchesByQuery: [String: [Food]?] = [:]
             for (suggestion, suggestionPhotoIDs) in suggestions {
-                newSuggestions.append(await lookUp(suggestion, photoIDs: suggestionPhotoIDs))
+                lookedUp.append(await lookUp(suggestion, photoIDs: suggestionPhotoIDs, cache: &matchesByQuery))
             }
+            newSuggestions = try Self.groupingLikelyDuplicates(lookedUp, hints: response.duplicateGroups)
             if newSuggestions.isEmpty { message = PhotoAnalysisMessage.noFoodFound }
         } catch MealAnalysisGatewayError.malformedAnalysis {
             message = PhotoAnalysisMessage.malformed
         } catch {
             message = PhotoAnalysisMessage.unavailable
         }
+        if photos.count > 1 { message = message.map(PhotoAnalysisMessage.forSeveralPhotos) }
 
         // The person may have moved on to another meal entry while the photo was being analyzed.
         guard draft?.id == entry.id else { throw MealEntryWorkflowError.noMealEntryInProgress }
@@ -118,14 +141,62 @@ extension MealEntryWorkflow {
 
     /// Looks up documented foods for a suggestion through the boundary. A failed lookup leaves no matches;
     /// the person can still search themselves or add a custom food.
-    private func lookUp(_ suggestion: FoodSuggestion, photoIDs: [MealPhoto.ID]) async -> PendingSuggestion {
+    /// Repeated queries within one analysis (the same food seen in several photos) are looked up once.
+    private func lookUp(
+        _ suggestion: FoodSuggestion,
+        photoIDs: [MealPhoto.ID],
+        cache: inout [String: [Food]?]
+    ) async -> PendingSuggestion {
         let matches: [Food]?
-        do {
-            matches = Array(try await gateway.searchFoods(matching: suggestion.searchQuery).prefix(5))
-        } catch {
-            matches = nil
+        if let cached = cache[suggestion.searchQuery] {
+            matches = cached
+        } else {
+            do {
+                matches = Array(try await gateway.searchFoods(matching: suggestion.searchQuery).prefix(5))
+            } catch {
+                matches = nil
+            }
+            cache[suggestion.searchQuery] = .some(matches)
         }
         return PendingSuggestion(suggestion: suggestion, photoIDs: photoIDs, matches: matches)
+    }
+
+    /// Joins suggestions the analysis hints are the same food seen in different photos into one suggestion
+    /// that keeps its views, so it counts once until the person separates it. Overlapping hints join into
+    /// one group. A hint that would join suggestions seen in the same photo is not followed: one photo showing
+    /// two of a food shows two foods. A hint naming a suggestion that is not listed exactly once does not fit
+    /// the contract.
+    static func groupingLikelyDuplicates(
+        _ suggestions: [PendingSuggestion],
+        hints: [DuplicateGroupHint]
+    ) throws -> [PendingSuggestion] {
+        guard !hints.isEmpty else { return suggestions }
+        var indicesByID: [String: [Int]] = [:]
+        for (index, pending) in suggestions.enumerated() { indicesByID[pending.suggestion.id, default: []].append(index) }
+
+        // Groups of suggestion indices in review order, each with the first reason given for it.
+        var groups: [(members: [Int], reason: String?)] = suggestions.indices.map { ([$0], nil) }
+        for hint in hints {
+            let members = try hint.suggestionIDs.map { id -> Int in
+                guard let indices = indicesByID[id], indices.count == 1 else {
+                    throw MealAnalysisGatewayError.malformedAnalysis
+                }
+                return indices[0]
+            }
+            let slots = Set(members.map { member in groups.firstIndex { $0.members.contains(member) }! }).sorted()
+            guard slots.count > 1 else { continue }
+            let joined = slots.flatMap { groups[$0].members }.sorted()
+            let photoIDs = joined.flatMap { suggestions[$0].photoIDs }
+            guard Set(photoIDs).count == photoIDs.count else { continue }
+            let reason = slots.lazy.compactMap { groups[$0].reason }.first ?? hint.reason.flatMap(\.nonBlank)
+            groups[slots[0]] = (joined, reason)
+            for slot in slots.dropFirst().reversed() { groups.remove(at: slot) }
+        }
+        return groups.map { members, reason in
+            members.count == 1
+                ? suggestions[members[0]]
+                : PendingSuggestion(likelyDuplicates: members.map { suggestions[$0] }, reason: reason)
+        }
     }
 
     /// Each suggestion with the draft photos it refers to. Suggestions that name no analyzed photo, or no
@@ -212,6 +283,43 @@ struct PendingSuggestion {
     var photoIDs: [MealPhoto.ID]
     /// Documented foods found for the suggestion's search query; nil when the lookup failed.
     var matches: [Food]?
+    /// Set when this suggestion joins likely views of one food from different photos.
+    var likelyDuplicates: LikelyDuplicates?
+}
+
+/// Suggestions from different photos that likely show the same food, reviewed as one.
+struct LikelyDuplicates {
+    /// Each photo's suggestion, as reviewed separately if the person separates them.
+    var views: [PendingSuggestion]
+    /// Why the analysis thinks they are the same food, if it said.
+    var reason: String?
+}
+
+extension PendingSuggestion {
+    /// One suggestion for likely views of the same food: named and looked up as the first view, shown in
+    /// every view's photos, with the first suggested portion and every view's unresolved details. Accepting
+    /// it adds one reviewed food shown in all those photos.
+    init(likelyDuplicates views: [PendingSuggestion], reason: String?) {
+        let first = views[0]
+        var suggestion = first.suggestion
+        suggestion.photoIDs = views.flatMap(\.suggestion.photoIDs).uniqued()
+        suggestion.portion = views.lazy.compactMap(\.suggestion.portion).first
+        suggestion.unresolvedDetails = views.flatMap(\.suggestion.unresolvedDetails).uniqued()
+        self.init(
+            suggestion: suggestion,
+            photoIDs: views.flatMap(\.photoIDs).uniqued(),
+            matches: first.matches,
+            likelyDuplicates: LikelyDuplicates(views: views, reason: reason)
+        )
+    }
+}
+
+private extension String {
+    /// The text trimmed, or nil when nothing is left.
+    var nonBlank: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
 }
 
 /// A portion unit name as written by the analysis or a source, compared loosely: case, plural "s" and
@@ -239,6 +347,22 @@ enum PhotoAnalysisMessage {
         + "meal entry: search for foods or add a custom food to finish it."
     static let noFoodFound = "Photo analysis found no food in this photo. Search for foods or add a custom food "
         + "instead."
+
+    /// The message as worded for an analysis of several photos.
+    static func forSeveralPhotos(_ message: String) -> String {
+        switch message {
+        case unavailable:
+            return "Photo analysis isn't available right now. Your photos are still in this meal entry: "
+                + "search for foods or add a custom food to finish it."
+        case malformed:
+            return "Photo analysis returned results the app couldn't use. Your photos are still in this "
+                + "meal entry: search for foods or add a custom food to finish it."
+        case noFoodFound:
+            return "Photo analysis found no food in these photos. Search for foods or add a custom food instead."
+        default:
+            return message
+        }
+    }
 }
 
 // MARK: - Presented to the person
@@ -288,12 +412,21 @@ public struct PresentedFoodSuggestion: Hashable, Identifiable, Sendable {
     public var matches: [SuggestedFoodMatch]
     /// Shown when no documented food was found, pointing to search or a custom food.
     public var noMatchMessage: String?
+    /// Set when the suggestion joins likely views of the same food from different photos, which count once
+    /// unless the person separates them (`MealEntryWorkflow.separateSuggestion(_:)`).
+    public var likelyDuplicateNote: String?
 
     init(_ pending: PendingSuggestion, photoNumbers: [MealPhoto.ID: Int]) {
         id = pending.id
         name = pending.suggestion.name
         suggestedPortion = pending.suggestion.portion.map(Self.format)
-        shownIn = PhotoReferenceFormat.shownIn(pending.photoIDs.compactMap { photoNumbers[$0] })
+        let shownIn = PhotoReferenceFormat.shownIn(pending.photoIDs.compactMap { photoNumbers[$0] })
+        self.shownIn = shownIn
+        likelyDuplicateNote = pending.likelyDuplicates.map { group in
+            let seen = shownIn.map { "Likely the same food seen in \($0)" } ?? "Likely the same food"
+            let reason = group.reason.map { " (\($0))" } ?? ""
+            return "\(seen)\(reason). It counts once unless you separate it."
+        }
         uncertaintyNotes = pending.suggestion.unresolvedDetails.map(\.detail)
         matches = (pending.matches ?? []).map { SuggestedFoodMatch($0, portion: pending.suggestion.portion) }
         switch pending.matches {

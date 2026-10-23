@@ -53,8 +53,11 @@ enum GeminiRequest {
     (identity), an ingredient that may be present but cannot be seen (ingredient), how it was prepared \
     (preparation), or how much there is (portion).
 
-    If the same food appears in more than one photo, list it once for each photo and put those ids in one \
-    duplicateGroups entry with a short reason.
+    The photos may show the same food from different angles as well as additional dishes. If the same food \
+    appears in more than one photo, list it once for each photo and put those ids in one duplicateGroups entry \
+    with a short reason. Only group foods from different photos: several servings seen in the same photo are \
+    distinct foods, and similar dishes that are not the same serving (two plates of the same pasta) stay \
+    separate. Never leave a food out because it may be a duplicate; the person decides.
 
     Do not give calories or any nutrient values.
     """

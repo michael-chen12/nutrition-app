@@ -133,6 +133,39 @@ final class MealPhotoAnalysisContractTests: XCTestCase {
         XCTAssertFalse(schemaText.lowercased().contains("calorie"), "Schema never asks for nutrient values")
     }
 
+    func test_severalPhotosGoInOneProviderRequestEachLabeledWithItsPhotoID() async throws {
+        let secondPhotoID = "6F1A2B3C-0000-4000-8000-000000000002"
+        let secondPhoto = Data([0x89, 0x50, 0x4E, 0x47])
+        let transport = RecordingProviderTransport(.response(
+            statusCode: 200, body: Fixtures.generateContentReply(modelText: Fixtures.riceAndChickenOutput)
+        ))
+
+        _ = await makeService(transport).handle(requestBody: Fixtures.analysisRequestBody(photos: [
+            PhotoUpload(photoID: Fixtures.photoID, mediaType: "image/jpeg", imageData: Fixtures.jpegBytes),
+            PhotoUpload(photoID: secondPhotoID, mediaType: "image/png", imageData: secondPhoto),
+        ]))
+
+        XCTAssertEqual(transport.sentRequests.count, 1, "One analysis for all the meal photos")
+        let sent = try XCTUnwrap(transport.sentRequests.first)
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: sent.body) as? [String: Any])
+        let parts = try XCTUnwrap(((body["contents"] as? [[String: Any]])?.first?["parts"]) as? [[String: Any]])
+        // Each image follows the label naming its photo ID, so suggestions can refer back to the photo.
+        let labeledImages = zip(parts, parts.dropFirst()).compactMap { label, image -> String? in
+            guard let text = label["text"] as? String,
+                  let inline = image["inline_data"] as? [String: Any],
+                  let mimeType = inline["mime_type"] as? String,
+                  let data = inline["data"] as? String else { return nil }
+            return "\(text) | \(mimeType) | \(data)"
+        }
+        XCTAssertEqual(labeledImages, [
+            "Photo ID: \(Fixtures.photoID) | image/jpeg | \(Fixtures.jpegBytes.base64EncodedString())",
+            "Photo ID: \(secondPhotoID) | image/png | \(secondPhoto.base64EncodedString())",
+        ])
+        let prompt = parts.compactMap { $0["text"] as? String }.joined(separator: "\n")
+        XCTAssertTrue(prompt.contains("duplicateGroups"), "The prompt asks for likely cross-photo duplicates")
+        XCTAssertTrue(prompt.contains("same photo"), "The prompt keeps foods seen in one photo distinct")
+    }
+
     func test_modelNameAndKeyComeFromTheBackendEnvironment() {
         let configuration = GeminiConfiguration(environment: [
             "GEMINI_API_KEY": Fixtures.testKey,

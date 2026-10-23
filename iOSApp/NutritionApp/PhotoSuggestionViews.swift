@@ -33,16 +33,27 @@ struct PhotoSuggestionsSection: View {
     @Bindable var model: MealEntryModel
     let photos: [PresentedMealPhoto]
 
-    @State private var photoToAnalyze: PresentedMealPhoto?
+    @State private var photosToAnalyze: PhotosToAnalyze?
     @State private var suggestionToReview: PresentedFoodSuggestion?
+
+    /// The meal photos the person chose to upload together for one analysis.
+    private struct PhotosToAnalyze: Identifiable {
+        var id: [MealPhoto.ID]
+    }
 
     var body: some View {
         Section {
+            if photos.count > 1 {
+                Button("Suggest foods from all \(photos.count) photos") {
+                    photosToAnalyze = PhotosToAnalyze(id: photos.map(\.id))
+                }
+                .disabled(model.isAnalyzingPhoto)
+            }
             ForEach(photos) { photo in
-                Button("Suggest foods from \(photo.label)") { photoToAnalyze = photo }
+                Button("Suggest foods from \(photo.label)") { photosToAnalyze = PhotosToAnalyze(id: [photo.id]) }
                     .disabled(model.isAnalyzingPhoto)
             }
-            if model.isAnalyzingPhoto { ProgressView("Analyzing photo…") }
+            if model.isAnalyzingPhoto { ProgressView("Analyzing photos…") }
             if let analysis = model.photoAnalysis {
                 if let message = analysis.message {
                     Label(message, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
@@ -52,6 +63,9 @@ struct PhotoSuggestionsSection: View {
                         .buttonStyle(.plain)
                         .swipeActions {
                             Button("Reject", role: .destructive) { model.rejectSuggestion(suggestion.id) }
+                            if suggestion.likelyDuplicateNote != nil {
+                                Button("Separate") { model.separateSuggestion(suggestion.id) }
+                            }
                         }
                 }
                 if !analysis.suggestions.isEmpty {
@@ -63,14 +77,14 @@ struct PhotoSuggestionsSection: View {
         } footer: {
             Text("Optional. You can always add foods yourself below.")
         }
-        .sheet(item: $photoToAnalyze) { photo in
+        .sheet(item: $photosToAnalyze) { chosen in
             PhotoAnalysisDisclosureView(
                 disclosure: model.photoAnalysisDisclosure,
                 upload: {
-                    photoToAnalyze = nil
-                    Task { await model.uploadForAnalysis(photo.id) }
+                    photosToAnalyze = nil
+                    Task { await model.uploadForAnalysis(chosen.id) }
                 },
-                enterManually: { photoToAnalyze = nil }
+                enterManually: { photosToAnalyze = nil }
             )
         }
         .sheet(item: $suggestionToReview) { suggestion in
@@ -87,6 +101,9 @@ struct SuggestionRow: View {
             Text(suggestion.name)
             Text([suggestion.suggestedPortion, suggestion.shownIn].compactMap { $0 }.joined(separator: " · "))
                 .font(.caption).foregroundStyle(.secondary)
+            if let note = suggestion.likelyDuplicateNote {
+                Label(note, systemImage: "square.on.square").font(.caption).foregroundStyle(.secondary)
+            }
             ForEach(suggestion.uncertaintyNotes, id: \.self) { note in
                 Label(note, systemImage: "questionmark.circle").font(.caption).foregroundStyle(.orange)
             }
@@ -169,6 +186,16 @@ struct SuggestionReviewView: View {
                     TextField("Amount (g)", value: $customGrams, format: .number).keyboardType(.decimalPad)
                     Button("Accept as custom food", action: acceptCustomFood)
                         .disabled(customName.isEmpty || customGrams == nil)
+                }
+                if suggestion.likelyDuplicateNote != nil {
+                    Section {
+                        Button("Separate into one food per photo") {
+                            model.separateSuggestion(suggestion.id)
+                            dismiss()
+                        }
+                    } footer: {
+                        Text("Use this when the photos show different servings, such as two plates of the same dish.")
+                    }
                 }
                 Section {
                     Button("Reject suggestion", role: .destructive) {
