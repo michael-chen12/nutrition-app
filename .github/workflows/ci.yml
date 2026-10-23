@@ -1,0 +1,48 @@
+# Builds and tests everything on macOS, the one platform where every part compiles: the core package, the
+# backend library and its Hummingbird server (which doesn't build on Windows), and the SwiftUI app (needs Xcode).
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    name: Core package tests
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift test
+
+  backend:
+    name: Backend tests and server build
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: Backend
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift test
+      - run: swift build --product MealPhotoAnalysisServer
+
+  ios-app:
+    name: iOS app build
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen
+      - name: Generate the Xcode project
+        working-directory: iOSApp
+        run: xcodegen generate
+      - name: Build for the iOS Simulator
+        run: >
+          xcodebuild build
+          -project iOSApp/MealNutrition.xcodeproj
+          -scheme MealNutrition
+          -destination 'generic/platform=iOS Simulator'
+          -derivedDataPath DerivedData
+          CODE_SIGNING_ALLOWED=NO

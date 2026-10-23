@@ -26,18 +26,22 @@ See `IMPLEMENTATION_PLAN.md`, `GLOSSARY.md` and `docs/adr/`.
 - `Tests/NutritionCoreTests/` — XCTest suite. Feature tests drive `MealEntryWorkflow` and fake only the
   external boundary (`MealAnalysisGateway`). Camera capture tests drive `MealPhotoCapture` with a camera test
   substitute for the on-device `MealPhotoCamera` adapter, since hardware capture is unavailable to them.
-- `iOSApp/` — thin SwiftUI views over the core. Not part of the Swift package; build it in Xcode by adding
-  these files to an iOS 17+ app target that depends on the `NutritionCore` package product.
+- `iOSApp/` — thin SwiftUI views over the core, built as the iOS 17+ `MealNutrition` app target described by
+  the XcodeGen spec `iOSApp/project.yml`. Not part of the Swift package.
 
-### Info.plist
+### iOS app
 
-There is no Xcode project in this repo yet. When creating the app target, add this key to its Info.plist
-(or the target's "Info" tab), or in-app camera capture crashes on first use:
+The Xcode project is generated, not committed. On a Mac with [XcodeGen](https://github.com/yonaskolb/XcodeGen):
 
-| Key | Value |
-| --- | --- |
-| `NSCameraUsageDescription` | `Take meal photos to add to a meal entry.` |
-| `MealAnalysisBackendURL` | Optional. The photo analysis backend, default `http://127.0.0.1:8080`. |
+```sh
+cd iOSApp
+xcodegen generate
+open MealNutrition.xcodeproj
+```
+
+`project.yml` also generates the Info.plist, including `NSCameraUsageDescription` (in-app camera capture
+crashes without it) and `MealAnalysisBackendURL` (the backend, `http://127.0.0.1:8080`, which the iOS
+Simulator reaches on this Mac). Change the plist through `project.yml`, never the generated file.
 
 ## Build and test
 
@@ -50,6 +54,9 @@ swift test
 
 On Windows, make sure the Swift toolchain and runtime are on `PATH` and `SDKROOT` points at the Windows SDK
 before running these commands.
+
+CI (`.github/workflows/ci.yml`) runs on macOS for every push and pull request: the core package tests, the
+backend tests plus a build of its server, and a build of the iOS app for the Simulator.
 
 ## Backend
 

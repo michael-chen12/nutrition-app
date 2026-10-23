@@ -1,0 +1,43 @@
+# XcodeGen spec for the iPhone app. Generate the Xcode project with `xcodegen generate` in this folder; the
+# generated MealNutrition.xcodeproj and NutritionApp/Info.plist are build output and stay out of git.
+# The app target is named MealNutrition so it doesn't share a name with the root Swift package (NutritionApp).
+name: MealNutrition
+options:
+  bundleIdPrefix: io.github.michael-chen12
+  deploymentTarget:
+    iOS: "17.0"
+packages:
+  NutritionApp:
+    path: ..
+targets:
+  MealNutrition:
+    type: application
+    platform: iOS
+    sources:
+      - NutritionApp
+    dependencies:
+      - package: NutritionApp
+        product: NutritionCore
+    info:
+      path: NutritionApp/Info.plist
+      properties:
+        CFBundleDisplayName: Meal Nutrition
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        NSCameraUsageDescription: Take meal photos to add to a meal entry.
+        # The photo analysis and food search backend (Backend/). The iOS Simulator reaches a backend running on
+        # this Mac as 127.0.0.1; point it at a deployed backend for devices.
+        MealAnalysisBackendURL: http://127.0.0.1:8080
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.michael-chen12.MealNutrition
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1"
+    scheme: {}
