@@ -66,6 +66,62 @@ final class HTTPMealAnalysisGatewayTests: XCTestCase {
         }
     }
 
+    // MARK: Food search
+
+    func test_foodSearchAsksTheBackendAndKeepsEachRecordsSourceAndServingUnits() async throws {
+        let sent = SentRequests()
+        let reply = FoodSearchResponse(foods: [
+            DocumentedFood(
+                name: "Rice, white, long-grain, regular, enriched, cooked",
+                sourceName: "USDA FoodData Central",
+                recordID: "168878",
+                nutrientsPer100g: DocumentedNutrients(calories: 130, protein: 2.69, carbohydrates: 28.17, fat: 0.28),
+                servingUnits: [
+                    DocumentedServingUnit(name: "cup", quantityBasis: 1, gramWeight: 158),
+                    DocumentedServingUnit(name: "scoop", quantityBasis: 1, gramWeight: nil),
+                ]
+            ),
+        ])
+        let replyJSON = String(decoding: try JSONEncoder().encode(reply), as: UTF8.self)
+
+        let foods = try await gateway(replying: 200, replyJSON, recordInto: sent).searchFoods(matching: "rice white cooked")
+
+        XCTAssertEqual(foods, [
+            Food(
+                name: "Rice, white, long-grain, regular, enriched, cooked",
+                nutrientsPer100g: NutrientsPer100g(calories: 130, protein: 2.69, carbohydrates: 28.17, fat: 0.28),
+                source: .documented(SourceReference(sourceName: "USDA FoodData Central", recordID: "168878")),
+                servingUnits: [
+                    ServingUnit(name: "cup", quantityBasis: 1, gramWeight: 158),
+                    ServingUnit(name: "scoop", quantityBasis: 1, gramWeight: nil),
+                ]
+            ),
+        ])
+        let urlRequest = try XCTUnwrap(sent.requests.first)
+        XCTAssertEqual(urlRequest.url?.absoluteString, "http://127.0.0.1:8080/v1/food-searches")
+        XCTAssertEqual(urlRequest.httpMethod, "POST")
+        XCTAssertEqual(urlRequest.value(forHTTPHeaderField: "Content-Type"), "application/json")
+        let body = try XCTUnwrap(urlRequest.httpBody)
+        XCTAssertEqual(try JSONDecoder().decode(FoodSearchRequest.self, from: body), FoodSearchRequest(query: "rice white cooked"))
+    }
+
+    func test_foodSearchFailuresAreReportedAsUnavailable() async throws {
+        let failing: [HTTPMealAnalysisGateway] = [
+            gateway(replying: 503, #"{"code":"notConfigured","message":"x"}"#),
+            gateway(replying: 502, #"{"code":"providerUnavailable","message":"x"}"#),
+            gateway(replying: 200, #"{"foods": "not a list"}"#),
+            HTTPMealAnalysisGateway(backendURL: backend) { _ in throw URLError(.cannotConnectToHost) },
+        ]
+        for gateway in failing {
+            do {
+                _ = try await gateway.searchFoods(matching: "rice")
+                XCTFail("Expected foodSearchUnavailable")
+            } catch {
+                XCTAssertEqual(error as? MealAnalysisGatewayError, .foodSearchUnavailable)
+            }
+        }
+    }
+
     func test_unreachableBackendIsReportedAsUnavailable() async throws {
         let gateway = HTTPMealAnalysisGateway(backendURL: backend) { _ in throw URLError(.cannotConnectToHost) }
 

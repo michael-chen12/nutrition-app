@@ -3,29 +3,19 @@ import Foundation
 import FoundationNetworking
 #endif
 
-/// The app's `MealAnalysisGateway` over HTTP: photo analysis goes to the meal photo analysis backend
-/// (Backend/), which holds the provider credential, so no key ships with the app.
-///
-/// Food lookup is not served by the backend yet; it is delegated to `foodLookup` (by default, no results, so
-/// search points the person to a custom food).
+/// The app's `MealAnalysisGateway` over HTTP: photo analysis and food search both go to the backend
+/// (Backend/), which holds the provider and nutrition source credentials, so no key ships with the app.
 public final class HTTPMealAnalysisGateway: MealAnalysisGateway {
     public typealias Send = (URLRequest) async throws -> (Data, HTTPURLResponse)
 
     private let backendURL: URL
     private let send: Send
-    private let foodLookup: (String) async throws -> [Food]
 
     /// - Parameters:
     ///   - backendURL: The backend's base URL, e.g. `http://127.0.0.1:8080` during development.
     ///   - send: Performs the HTTP request; defaults to `URLSession.shared`.
-    ///   - foodLookup: Documented food search until the backend serves it.
-    public init(
-        backendURL: URL,
-        foodLookup: @escaping (String) async throws -> [Food] = { _ in [] },
-        send: Send? = nil
-    ) {
+    public init(backendURL: URL, send: Send? = nil) {
         self.backendURL = backendURL
-        self.foodLookup = foodLookup
         self.send = send ?? { request in
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
@@ -33,22 +23,24 @@ public final class HTTPMealAnalysisGateway: MealAnalysisGateway {
         }
     }
 
-    public convenience init(backendURL: URL, send: @escaping Send) {
-        self.init(backendURL: backendURL, foodLookup: { _ in [] }, send: send)
-    }
-
+    /// Documented foods from the backend's food search, each with its source name, record ID and serving units.
+    /// Throws `MealAnalysisGatewayError.foodSearchUnavailable` when the search cannot be completed.
     public func searchFoods(matching query: String) async throws -> [Food] {
-        try await foodLookup(query)
+        let urlRequest = try jsonRequest(
+            path: FoodSearchEndpoint.path, method: FoodSearchEndpoint.method, body: FoodSearchRequest(query: query),
+            timeout: 30
+        )
+        guard let (data, response) = try? await send(urlRequest), response.statusCode == 200,
+              let reply = try? JSONDecoder().decode(FoodSearchResponse.self, from: data) else {
+            throw MealAnalysisGatewayError.foodSearchUnavailable
+        }
+        return reply.foods.map(Food.init)
     }
 
     public func analyzeMealPhotos(_ request: MealPhotoAnalysisRequest) async throws -> MealPhotoAnalysisResponse {
-        var urlRequest = URLRequest(
-            url: backendURL.appendingPathComponent(MealPhotoAnalysisEndpoint.path),
-            timeoutInterval: 90
+        let urlRequest = try jsonRequest(
+            path: MealPhotoAnalysisEndpoint.path, method: MealPhotoAnalysisEndpoint.method, body: request, timeout: 90
         )
-        urlRequest.httpMethod = MealPhotoAnalysisEndpoint.method
-        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        urlRequest.httpBody = try JSONEncoder().encode(request)
 
         let data: Data
         let response: HTTPURLResponse
@@ -69,5 +61,37 @@ public final class HTTPMealAnalysisGateway: MealAnalysisGateway {
         } catch {
             throw MealAnalysisGatewayError.malformedAnalysis
         }
+    }
+
+    private func jsonRequest(
+        path: String,
+        method: String,
+        body: some Encodable,
+        timeout: TimeInterval
+    ) throws -> URLRequest {
+        var urlRequest = URLRequest(url: backendURL.appendingPathComponent(path), timeoutInterval: timeout)
+        urlRequest.httpMethod = method
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.httpBody = try JSONEncoder().encode(body)
+        return urlRequest
+    }
+}
+
+extension Food {
+    /// A documented food record from the backend, with its source reference and documented serving units.
+    init(_ documented: DocumentedFood) {
+        self.init(
+            name: documented.name,
+            nutrientsPer100g: NutrientsPer100g(
+                calories: documented.nutrientsPer100g.calories,
+                protein: documented.nutrientsPer100g.protein,
+                carbohydrates: documented.nutrientsPer100g.carbohydrates,
+                fat: documented.nutrientsPer100g.fat
+            ),
+            source: .documented(SourceReference(sourceName: documented.sourceName, recordID: documented.recordID)),
+            servingUnits: documented.servingUnits.map {
+                ServingUnit(name: $0.name, quantityBasis: $0.quantityBasis, gramWeight: $0.gramWeight)
+            }
+        )
     }
 }

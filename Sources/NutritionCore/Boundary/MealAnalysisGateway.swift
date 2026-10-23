@@ -27,10 +27,13 @@ extension MealAnalysisGateway {
     }
 }
 
-/// Why photo analysis produced no suggestions. Either way the person can finish the meal entry manually.
+/// Why the boundary could not answer. Either way the person can finish the meal entry manually.
 public enum MealAnalysisGatewayError: Error, Equatable, Sendable {
     /// The analysis service could not be reached, is not set up, or refused the request.
     case analysisUnavailable
     /// The analysis service answered with output that does not fit the contract.
     case malformedAnalysis
+    /// Food search could not be completed (backend unreachable or not set up, or the source unavailable).
+    /// The person can search again or add a custom food.
+    case foodSearchUnavailable
 }

@@ -122,7 +122,7 @@ public struct AnalysisHTTPResponse: Sendable {
         502, .providerUnavailable, "The photo analysis service is unavailable right now."
     )
 
-    private static let encoder: JSONEncoder = {
+    static let encoder: JSONEncoder = {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         return encoder

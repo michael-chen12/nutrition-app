@@ -1,9 +1,10 @@
 // swift-tools-version:5.10
-// Meal photo analysis backend: keeps the hosted provider credential off the iPhone and returns structured
-// suggestions in the shared `AnalysisContract` (root package).
+// The app's backend: keeps the Gemini and USDA FoodData Central credentials off the iPhone and answers photo
+// analysis and food search in the shared `AnalysisContract` (root package).
 //
 // `MealPhotoAnalysis` holds every decision (request validation, Gemini request building, response validation,
-// failure mapping, credential handling) and tests on any platform without a network or a real key.
+// FoodData Central search and normalization through the shared `FoodDataCentral` adapter, failure mapping,
+// credential handling) and tests on any platform without a network or a real key.
 // `MealPhotoAnalysisServer` is a thin Hummingbird HTTP server around it. Hummingbird (and SwiftNIO's
 // networking) does not build on Windows, so on Windows this package leaves the server out and `swift test`
 // covers the library only; build and run the server on macOS or Linux.
@@ -21,7 +22,10 @@ var products: [Product] = [
 var targets: [Target] = [
     .target(
         name: "MealPhotoAnalysis",
-        dependencies: [.product(name: "AnalysisContract", package: "NutritionApp")]
+        dependencies: [
+            .product(name: "AnalysisContract", package: "NutritionApp"),
+            .product(name: "FoodDataCentral", package: "NutritionApp"),
+        ]
     ),
     .testTarget(name: "MealPhotoAnalysisTests", dependencies: ["MealPhotoAnalysis"]),
 ]

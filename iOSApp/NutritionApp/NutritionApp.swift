@@ -6,9 +6,8 @@ import SwiftUI
 struct NutritionApp: App {
     @State private var model = MealEntryModel(workflow: MealEntryWorkflow(
         store: try! FileMealHistoryStore(directory: .applicationSupportDirectory.appending(path: "MealHistory")),
-        // Photo analysis goes through the backend (Backend/), which holds the provider key. Food lookup is not
-        // served by the backend yet (USDA FoodData Central records normalized with `FoodDataCentralRecord`; the
-        // API key stays on the backend); with no results, search points to a custom food.
+        // Photo analysis and food search go through the backend (Backend/), which holds the Gemini and USDA
+        // FoodData Central keys; no key ships with the app.
         gateway: HTTPMealAnalysisGateway(backendURL: NutritionApp.analysisBackendURL)
     ))
 

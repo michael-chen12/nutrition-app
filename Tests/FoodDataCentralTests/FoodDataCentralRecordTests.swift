@@ -1,21 +1,23 @@
 import Foundation
-import NutritionCore
+import AnalysisContract
+import FoodDataCentral
 import XCTest
 
-/// USDA FoodData Central records, normalized to the shared per-100 g food representation.
+/// USDA FoodData Central records, normalized to the shared per-100 g documented food representation.
 /// Fixtures are hand-built from the JSON shapes documented in the FDC API guide
 /// (https://fdc.nal.usda.gov/api-guide/); no dataset is downloaded and the live API is never called.
 final class FoodDataCentralRecordTests: XCTestCase {
     func test_fullFoodRecordBecomesAFoodPer100gWithItsSourceNameAndFDCID() throws {
         let record = try JSONDecoder().decode(FoodDataCentralRecord.self, from: Data(Self.srLegacyRiceRecord.utf8))
 
-        let food = try record.food()
+        let food = try record.documentedFood()
 
-        XCTAssertEqual(food, Food(
+        XCTAssertEqual(food, DocumentedFood(
             name: "Rice, white, long-grain, regular, enriched, cooked",
-            nutrientsPer100g: NutrientsPer100g(calories: 130, protein: 2.69, carbohydrates: 28.17, fat: 0.28),
-            source: .documented(SourceReference(sourceName: "USDA FoodData Central", recordID: "168878")),
-            servingUnits: [ServingUnit(name: "cup", quantityBasis: 1, gramWeight: 158)]
+            sourceName: "USDA FoodData Central",
+            recordID: "168878",
+            nutrientsPer100g: DocumentedNutrients(calories: 130, protein: 2.69, carbohydrates: 28.17, fat: 0.28),
+            servingUnits: [DocumentedServingUnit(name: "cup", quantityBasis: 1, gramWeight: 158)]
         ))
     }
 
@@ -24,11 +26,11 @@ final class FoodDataCentralRecordTests: XCTestCase {
             FoodDataCentralRecord.self, from: Data(Self.foundationHummusRecord.utf8)
         )
 
-        XCTAssertEqual(try record.food().servingUnits, [
-            ServingUnit(name: "cup, packed", quantityBasis: 1, gramWeight: 246),
-            ServingUnit(name: "tablespoon", quantityBasis: 2, gramWeight: 30),
-            ServingUnit(name: "container", quantityBasis: 1, gramWeight: 283),
-            ServingUnit(name: "scoop", quantityBasis: 1, gramWeight: nil),
+        XCTAssertEqual(try record.documentedFood().servingUnits, [
+            DocumentedServingUnit(name: "cup, packed", quantityBasis: 1, gramWeight: 246),
+            DocumentedServingUnit(name: "tablespoon", quantityBasis: 2, gramWeight: 30),
+            DocumentedServingUnit(name: "container", quantityBasis: 1, gramWeight: 283),
+            DocumentedServingUnit(name: "scoop", quantityBasis: 1, gramWeight: nil),
         ])
     }
 
@@ -46,12 +48,21 @@ final class FoodDataCentralRecordTests: XCTestCase {
         )
 
         XCTAssertEqual(response.suitableFoods(), [
-            Food(
+            DocumentedFood(
                 name: "Rice, white, cooked, no added fat",
-                nutrientsPer100g: NutrientsPer100g(calories: 129, protein: 2.66, carbohydrates: 27.9, fat: 0.28),
-                source: .documented(SourceReference(sourceName: "USDA FoodData Central", recordID: "2708346"))
+                sourceName: "USDA FoodData Central",
+                recordID: "2708346",
+                nutrientsPer100g: DocumentedNutrients(calories: 129, protein: 2.66, carbohydrates: 27.9, fat: 0.28)
             ),
         ])
+    }
+
+    func test_aRecordInAnUnknownShapeIsLeftOutWithoutLosingTheOthers() throws {
+        let list = "[\(Self.srLegacyRiceRecord), { \"fdcId\": \"not a number\" }, \(Self.foundationHummusRecord)]"
+
+        let records = try JSONDecoder().decode(FoodDataCentralRecordList.self, from: Data(list.utf8))
+
+        XCTAssertEqual(records.suitableFoods().map(\.recordID), ["168878", "321358"])
     }
 
     func test_foundationRecordWithoutEnergyUsesAtwaterSpecificFactorEnergy() throws {
@@ -59,7 +70,7 @@ final class FoodDataCentralRecordTests: XCTestCase {
             FoodDataCentralRecord.self, from: Data(Self.foundationHummusRecord.utf8)
         )
 
-        XCTAssertEqual(try record.food().nutrientsPer100g.calories, 222)
+        XCTAssertEqual(try record.documentedFood().nutrientsPer100g.calories, 222)
     }
 
     func test_brandedLiquidReportedPer100mlIsNotAGramBasedRecord() throws {
@@ -67,7 +78,7 @@ final class FoodDataCentralRecordTests: XCTestCase {
             let json = Self.brandedLiquidRecord.replacingOccurrences(of: "SERVING_UNIT", with: unit)
             let record = try JSONDecoder().decode(FoodDataCentralRecord.self, from: Data(json.utf8))
 
-            XCTAssertThrowsError(try record.food()) { error in
+            XCTAssertThrowsError(try record.documentedFood()) { error in
                 XCTAssertEqual(error as? FoodDataCentralError, .notPer100Grams(fdcId: 2041155))
             }
         }
@@ -77,7 +88,7 @@ final class FoodDataCentralRecordTests: XCTestCase {
         let json = Self.brandedLiquidRecord.replacingOccurrences(of: "SERVING_UNIT", with: "g")
         let record = try JSONDecoder().decode(FoodDataCentralRecord.self, from: Data(json.utf8))
 
-        XCTAssertEqual(try record.food().nutrientsPer100g.calories, 42)
+        XCTAssertEqual(try record.documentedFood().nutrientsPer100g.calories, 42)
     }
 
     // MARK: Fixtures

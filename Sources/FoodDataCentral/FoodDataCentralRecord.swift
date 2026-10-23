@@ -1,12 +1,14 @@
+import AnalysisContract
 import Foundation
 
 /// A USDA FoodData Central food record, as documented in the FDC API guide
 /// (https://fdc.nal.usda.gov/api-guide/).
 ///
-/// This adapter is how FDC records enter the app's shared food representation: `food()` normalizes a record
-/// to `Food` (nutrients per 100 g plus a `SourceReference` naming the source and its FDC ID). Additional
-/// regional sources get their own record adapter producing the same `Food`, so review, calculation,
-/// persistence and source display never depend on a particular source's format.
+/// This adapter is how FDC records enter the shared food representation: `documentedFood()` normalizes a
+/// record to the contract's `DocumentedFood` (nutrients per 100 g, serving units, and the source's name with
+/// the FDC ID). The backend uses it to answer food searches; the app turns each `DocumentedFood` into its
+/// `Food`. Additional regional sources get their own record adapter producing the same `DocumentedFood`, so
+/// review, calculation, persistence and source display never depend on a particular source's format.
 public struct FoodDataCentralRecord: Decodable, Hashable, Sendable {
     /// Name shown to the person for every food from this source.
     public static let sourceName = "USDA FoodData Central"
@@ -34,7 +36,7 @@ public struct FoodDataCentralRecord: Decodable, Hashable, Sendable {
 
         /// The portion as a serving unit, or nil when it names no familiar unit (e.g. Survey records'
         /// numeric modifier codes). A missing amount or gram weight is kept unknown, never filled in.
-        var servingUnit: ServingUnit? {
+        var servingUnit: DocumentedServingUnit? {
             let measureName = measureUnit?.name.map(Self.trimmed).flatMap { $0.isEmpty ? nil : $0 }
             let modifierText = modifier.map(Self.trimmed).flatMap { text -> String? in
                 text.isEmpty || Double(text) != nil ? nil : text
@@ -47,7 +49,7 @@ public struct FoodDataCentralRecord: Decodable, Hashable, Sendable {
             } else {
                 return nil
             }
-            return ServingUnit(name: name, quantityBasis: amount, gramWeight: gramWeight)
+            return DocumentedServingUnit(name: name, quantityBasis: amount, gramWeight: gramWeight)
         }
 
         private static func trimmed(_ text: String) -> String {
@@ -83,19 +85,20 @@ public struct FoodDataCentralRecord: Decodable, Hashable, Sendable {
     }
 
     /// The record normalized to the shared per-100 g representation with its source reference.
-    public func food() throws -> Food {
+    public func documentedFood() throws -> DocumentedFood {
         if let unit = servingSizeUnit?.lowercased(), unit == "ml" || unit == "mlt" {
             throw FoodDataCentralError.notPer100Grams(fdcId: fdcId)
         }
-        return Food(
+        return DocumentedFood(
             name: description,
-            nutrientsPer100g: NutrientsPer100g(
+            sourceName: Self.sourceName,
+            recordID: String(fdcId),
+            nutrientsPer100g: DocumentedNutrients(
                 calories: try amount(ofFirstOf: NutrientID.energyInPreferenceOrder),
                 protein: try amount(ofFirstOf: [NutrientID.protein]),
                 carbohydrates: try amount(ofFirstOf: [NutrientID.carbohydrateByDifference]),
                 fat: try amount(ofFirstOf: [NutrientID.totalFat])
             ),
-            source: .documented(SourceReference(sourceName: Self.sourceName, recordID: String(fdcId))),
             servingUnits: (foodPortions ?? []).compactMap(\.servingUnit)
         )
     }
@@ -119,13 +122,59 @@ public struct FoodDataCentralRecord: Decodable, Hashable, Sendable {
 }
 
 /// A `POST /v1/foods/search` (or `GET /v1/foods/search`) response from FoodData Central.
+/// Search results carry abridged records without household measures; fetch the full records
+/// (`FoodDataCentralRecordList`) for serving units.
 public struct FoodDataCentralSearchResponse: Decodable, Hashable, Sendable {
+    /// The records that could be read, in the source's relevance order.
     public var foods: [FoodDataCentralRecord]
+
+    private enum CodingKeys: String, CodingKey {
+        case foods
+    }
+
+    public init(from decoder: Decoder) throws {
+        var records = try decoder.container(keyedBy: CodingKeys.self).nestedUnkeyedContainer(forKey: .foods)
+        foods = FoodDataCentralRecordList.readableRecords(in: &records)
+    }
 
     /// The records that can back a nutrition estimate, normalized to the shared representation.
     /// Records that cannot be normalized (e.g. missing a needed nutrient) are not suitable matches and are left out.
-    public func suitableFoods() -> [Food] {
-        foods.compactMap { try? $0.food() }
+    public func suitableFoods() -> [DocumentedFood] {
+        foods.compactMap { try? $0.documentedFood() }
+    }
+}
+
+/// A `POST /v1/foods` response: full records (with `foodPortions`) for a list of FDC IDs, as a JSON array.
+public struct FoodDataCentralRecordList: Decodable, Hashable, Sendable {
+    /// The records that could be read. A record in a shape this adapter does not know is left out rather
+    /// than failing the whole list.
+    public var records: [FoodDataCentralRecord]
+
+    public init(from decoder: Decoder) throws {
+        var container = try decoder.unkeyedContainer()
+        records = Self.readableRecords(in: &container)
+    }
+
+    /// The records that can back a nutrition estimate, normalized to the shared representation.
+    public func suitableFoods() -> [DocumentedFood] {
+        records.compactMap { try? $0.documentedFood() }
+    }
+
+    static func readableRecords(in container: inout UnkeyedDecodingContainer) -> [FoodDataCentralRecord] {
+        var records: [FoodDataCentralRecord] = []
+        while !container.isAtEnd {
+            if let record = try? container.decode(FoodDataCentralRecord.self) {
+                records.append(record)
+            } else if (try? container.decode(Unreadable.self)) == nil {
+                break
+            }
+        }
+        return records
+    }
+
+    /// Consumes one array element that is not a readable record.
+    private struct Unreadable: Decodable {
+        init(from decoder: Decoder) throws {}
     }
 }
 
