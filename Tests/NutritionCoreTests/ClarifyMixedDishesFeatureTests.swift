@@ -216,7 +216,9 @@ final class ClarifyMixedDishesFeatureTests: XCTestCase {
 
         try workflow.combineFood(repeated, into: kept)
 
-        XCTAssertEqual(workflow.draftReview?.focusedQuestions.map(\.question), ["Was it cooked in oil? How much?"])
+        XCTAssertEqual(workflow.draftReview?.focusedQuestions.map(\.question), [
+            "Was it cooked in oil? How much?", "How much Rice, fried, with vegetables was there?",
+        ])
     }
 
     func test_uncertaintySavedBeforeFocusedQuestionsIsStillAskedAbout() throws {

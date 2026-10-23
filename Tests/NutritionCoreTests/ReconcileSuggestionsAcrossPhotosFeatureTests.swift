@@ -276,7 +276,12 @@ final class ReconcileSuggestionsAcrossPhotosFeatureTests: XCTestCase {
                        file: file, line: line)
         XCTAssertEqual(entry.foods.map(\.portion), ["250 g", "80 g", "50 g"], file: file, line: line)
         XCTAssertEqual(entry.foods.map(\.shownIn), ["Photos 1 and 2", "Photo 3", "Photo 3"], file: file, line: line)
-        XCTAssertEqual(entry.foods.map(\.uncertaintyNotes), [["Plate depth unclear"], [], []], file: file, line: line)
+        // The pasta's portion was already unresolved; bread and fries keep their photo-estimated grams as such.
+        XCTAssertEqual(
+            entry.foods.map(\.uncertaintyNotes),
+            [["Plate depth unclear"], ["Portion estimated from the photo"], ["Portion estimated from the photo"]],
+            file: file, line: line
+        )
         XCTAssertEqual(entry.foods.map(\.sourceRecordID), ["pasta-1", "bread-1", "fries-1"], file: file, line: line)
         XCTAssertEqual(entry.nutritionEstimate.label, "Approximate nutrition estimate", file: file, line: line)
         XCTAssertEqual(entry.nutritionEstimate.calories, "768 kcal", file: file, line: line)

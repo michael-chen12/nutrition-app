@@ -33,15 +33,22 @@ extension MealEntryWorkflow {
 
     /// Accepts a suggestion as one of its documented matches with the suggested portion, converted for that
     /// food (see `SuggestedFoodMatch.suggestedPortion`). Throws `suggestedPortionUnavailable` when the
-    /// suggestion's portion cannot be converted for that food; accept it with a portion instead.
+    /// suggestion's portion cannot be converted for that food; accept it with a portion instead. Grams the
+    /// analysis estimated from the photo are kept with a portion uncertainty note.
     @discardableResult
     public func acceptSuggestion(_ suggestionID: PresentedFoodSuggestion.ID, as match: SuggestedFoodMatch) throws
         -> ReviewedFood.ID {
         let pending = try pendingSuggestion(suggestionID)
-        guard let portion = Self.suggestedPortion(pending.suggestion.portion, for: match.result.food) else {
+        let food = match.result.food
+        guard let suggested = Self.suggestedPortion(pending.suggestion.portion, for: food) else {
             throw MealEntryWorkflowError.suggestedPortionUnavailable
         }
-        return try accept(pending, as: match.result.food, portion: portion, asSuggested: true)
+        let estimateNote = suggested.isPhotoEstimate
+            ? Self.photoEstimateNote(for: food, suggestion: pending.suggestion)
+            : nil
+        return try accept(
+            pending, as: food, portion: suggested.portion, asSuggested: true, adding: estimateNote.map { [$0] } ?? []
+        )
     }
 
     /// Accepts a suggestion as a documented food — one of its matches or any food the person searched for —
@@ -225,16 +232,17 @@ extension MealEntryWorkflow {
         return pending
     }
 
-    /// Adds the suggestion as a reviewed food with its unresolved details. `asSuggested` says whether the person
-    /// kept the food the analysis matched (one of its documented matches) rather than correcting it to another
-    /// food; a weak match kept that way stays in doubt as an identity note.
+    /// Adds the suggestion as a reviewed food with its unresolved details and `additionalNotes`. `asSuggested`
+    /// says whether the person kept the food the analysis matched (one of its documented matches) rather than
+    /// correcting it to another food; a weak match kept that way stays in doubt as an identity note.
     private func accept(
         _ pending: PendingSuggestion,
         as food: Food,
         portion: Portion,
-        asSuggested: Bool
+        asSuggested: Bool,
+        adding additionalNotes: [UncertaintyNote] = []
     ) throws -> ReviewedFood.ID {
-        var notes = pending.suggestion.unresolvedDetails.map(UncertaintyNote.init)
+        var notes = pending.suggestion.unresolvedDetails.map(UncertaintyNote.init) + additionalNotes
         if asSuggested, pending.suggestion.isWeakMatch {
             notes.append(UncertaintyNote(
                 detail: "Weak match: photo analysis wasn't sure this is \(pending.suggestion.name)",
@@ -249,16 +257,29 @@ extension MealEntryWorkflow {
 
     /// The suggested portion for a food: grams as suggested, a serving unit the source documents a gram
     /// weight for, or else the analysis's gram estimate. Nil when only a guess could convert it.
-    static func suggestedPortion(_ suggestion: PortionSuggestion?, for food: Food) -> Portion? {
+    static func suggestedPortion(_ suggestion: PortionSuggestion?, for food: Food) -> SuggestedPortion? {
         guard let suggestion, suggestion.quantity.isFinite, suggestion.quantity > 0 else { return nil }
         let unit = PortionUnitName(suggestion.unit)
-        if unit.isGrams { return Portion(grams: suggestion.quantity) }
+        if unit.isGrams {
+            return SuggestedPortion(portion: Portion(grams: suggestion.quantity), isPhotoEstimate: true)
+        }
         if let servingUnit = food.servingUnits.first(where: { PortionUnitName($0.name).matches(unit) }),
            let portion = Portion(quantity: suggestion.quantity, of: servingUnit) {
-            return portion
+            return SuggestedPortion(portion: portion, isPhotoEstimate: false)
         }
-        if let grams = suggestion.grams, grams.isFinite, grams > 0 { return Portion(grams: grams) }
+        if let grams = suggestion.grams, grams.isFinite, grams > 0 {
+            return SuggestedPortion(portion: Portion(grams: grams), isPhotoEstimate: true)
+        }
         return nil
+    }
+
+    /// Kept with a food accepted with grams the analysis estimated from the photo, so the precise-looking amount
+    /// stays open to correction. Not added when the analysis already noted the portion as unresolved.
+    private static func photoEstimateNote(for food: Food, suggestion: FoodSuggestion) -> UncertaintyNote? {
+        guard !suggestion.unresolvedDetails.contains(where: { $0.kind == .portion }) else { return nil }
+        return UncertaintyNote(
+            detail: "Portion estimated from the photo", kind: .portion, question: "How much \(food.name) was there?"
+        )
     }
 
     private static func mediaType(forFileExtension fileExtension: String) -> String {
@@ -480,8 +501,9 @@ public struct PresentedFoodSuggestion: Hashable, Identifiable, Sendable {
 public struct SuggestedFoodMatch: Hashable, Identifiable, Sendable {
     public var id: String { result.id }
     public var result: FoodSearchResult
-    /// e.g. "1 cup (158 g)" through the source's serving weight, or "120 g"; nil when the suggested portion
-    /// cannot be converted for this food without guessing (the person enters a portion instead).
+    /// e.g. "1 cup (158 g)" through the source's serving weight, or "About 120 g, estimated from the photo" for
+    /// grams the analysis estimated; nil when the suggested portion cannot be converted for this food without
+    /// guessing (the person enters a portion instead).
     public var suggestedPortion: String?
     /// The suggested portion in the unit and amount it would be accepted in, to prefill a portion editor.
     public var suggestedUnit: PortionUnit?
@@ -490,8 +512,19 @@ public struct SuggestedFoodMatch: Hashable, Identifiable, Sendable {
     init(_ food: Food, portion: PortionSuggestion?) {
         result = FoodSearchResult(food)
         let converted = MealEntryWorkflow.suggestedPortion(portion, for: food)
-        suggestedPortion = converted.map(PortionFormat.portion)
-        suggestedUnit = converted?.unit
-        suggestedQuantity = converted?.quantity
+        suggestedPortion = converted.map { suggested in
+            suggested.isPhotoEstimate
+                ? "About \(PortionFormat.portion(suggested.portion)), estimated from the photo"
+                : PortionFormat.portion(suggested.portion)
+        }
+        suggestedUnit = converted?.portion.unit
+        suggestedQuantity = converted?.portion.quantity
     }
+}
+
+/// A suggested portion converted for one food.
+struct SuggestedPortion {
+    var portion: Portion
+    /// The grams are the analysis's estimate from the photo, not a documented serving weight.
+    var isPhotoEstimate: Bool
 }

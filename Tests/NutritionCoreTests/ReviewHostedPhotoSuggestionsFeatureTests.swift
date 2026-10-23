@@ -120,7 +120,7 @@ final class ReviewHostedPhotoSuggestionsFeatureTests: XCTestCase {
         XCTAssertEqual(riceMatches.map(\.result.sourceRecordID), ["168878"])
         XCTAssertEqual(riceMatches.map(\.suggestedPortion), ["1 cup (158 g)"], "Converted with the source's cup")
         XCTAssertEqual(analysis.suggestions[1].matches.map(\.result.sourceRecordID), ["171477"])
-        XCTAssertEqual(analysis.suggestions[1].matches.map(\.suggestedPortion), ["120 g"])
+        XCTAssertEqual(analysis.suggestions[1].matches.map(\.suggestedPortion), ["About 120 g, estimated from the photo"])
         XCTAssertEqual(workflow.photoSuggestionReview, analysis, "Suggestions stay available while reviewing")
         XCTAssertEqual(workflow.draftReview?.foods, [], "Nothing counts until the person accepts it")
     }
@@ -238,6 +238,49 @@ final class ReviewHostedPhotoSuggestionsFeatureTests: XCTestCase {
         XCTAssertThrowsError(try workflow.rejectSuggestion(suggestion.id), "Already reviewed") { error in
             XCTAssertEqual(error as? MealEntryWorkflowError, .suggestionNotFound(suggestion.id))
         }
+    }
+
+    func test_aGramAmountGuessedFromThePhotoIsShownAndKeptAsAnEstimate() async throws {
+        let workflow = makeWorkflow(store: try FileMealHistoryStore(directory: directory.url))
+        workflow.startNewMealEntry()
+        let photo = workflow.importPhoto(platePhoto, fileExtension: "jpg")
+        gateway.photoAnalysisResult = .success(MealPhotoAnalysisResponse(suggestions: [
+            // Grams as suggested by the analysis.
+            FoodSuggestion(id: "1", name: "Stir-fried chicken", searchQuery: "chicken breast cooked",
+                           photoIDs: [photo.uuidString], portion: PortionSuggestion(quantity: 120, unit: "g"),
+                           matchConfidence: .high),
+            // A unit the source documents no weight for, with the analysis's own gram guess.
+            FoodSuggestion(id: "2", name: "Grilled chicken", searchQuery: "chicken breast cooked",
+                           photoIDs: [photo.uuidString], portion: PortionSuggestion(quantity: 2, unit: "pieces", grams: 90),
+                           matchConfidence: .high),
+            // A cup converted through the source's documented weight.
+            FoodSuggestion(id: "3", name: "Steamed white rice", searchQuery: "rice white cooked",
+                           photoIDs: [photo.uuidString], portion: PortionSuggestion(quantity: 1, unit: "cup", grams: 150),
+                           matchConfidence: .high),
+        ]))
+        workflow.acceptPhotoAnalysisDisclosure()
+        let analysis = try await workflow.analyzePhoto(photo)
+        let matches = try analysis.suggestions.map { try XCTUnwrap($0.matches.first) }
+
+        XCTAssertEqual(matches.map(\.suggestedPortion), [
+            "About 120 g, estimated from the photo",
+            "About 90 g, estimated from the photo",
+            "1 cup (158 g)",
+        ])
+        for (suggestion, match) in zip(analysis.suggestions, matches) {
+            try workflow.acceptSuggestion(suggestion.id, as: match)
+        }
+
+        let saved = try workflow.openMealEntry(id: try workflow.saveMealEntry())
+        XCTAssertEqual(saved.foods.map(\.portion), ["120 g", "90 g", "1 cup (158 g)"])
+        XCTAssertEqual(saved.foods.map(\.uncertaintyNotes), [
+            ["Portion estimated from the photo"], ["Portion estimated from the photo"], [],
+        ])
+        XCTAssertEqual(saved.focusedQuestions.map(\.question), [
+            "How much Chicken, broilers or fryers, breast, roasted was there?",
+            "How much Chicken, broilers or fryers, breast, roasted was there?",
+        ])
+        XCTAssertEqual(saved.focusedQuestions.map(\.kind), [.portion, .portion])
     }
 
     // MARK: Weak matches
