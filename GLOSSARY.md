@@ -26,5 +26,14 @@ _Avoid_: Scan history
 The combined nutrition estimates for pictured food in meal entries assigned to one day. It is not a measure of food consumed by one person.
 _Avoid_: Daily intake, calories eaten
 
+**Reference meal**:
+A consented meal whose foods were weighed or made from a known recipe, so its nutrition is known independently
+of the app. Used only to measure nutrition estimate accuracy, in a calibration or a held-out validation set.
+Each of its pictured foods, with its known grams and nutrition, is a _reference food_.
+
+**Pre-review estimate**:
+The nutrition estimate of photo suggestions accepted as offered, before the person reviews anything. Measured
+separately from the final nutrition estimate after review.
+
 **Custom food**:
-A food added by the person with nutrition values they provide when no suitable reference food is available.
+A food added by the person with nutrition values they provide when no suitable documented food is available.

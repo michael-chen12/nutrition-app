@@ -21,6 +21,12 @@ See `IMPLEMENTATION_PLAN.md`, `GLOSSARY.md` and `docs/adr/`.
 - `Sources/FoodDataCentral/` — the USDA FoodData Central adapter, normalizing FDC records to the contract's
   `DocumentedFood`. Additional regional sources get their own adapter producing the same type. The backend
   uses it; its tests use hand-built FDC fixtures.
+- `Sources/NutritionCalibration/` — the accuracy calibration pilot (ADR 0002): consented reference meals, trials
+  that run one through `MealEntryWorkflow` recording the pre-review and reviewed estimates, the accuracy report
+  by cuisine and dish type, and pass criteria frozen before the validation set is scored.
+  `Sources/NutritionCalibrationTool/` is its `nutrition-calibration` command; the app's debug-build
+  **Calibration pilot** screen runs trials. See `docs/calibration/README.md`. Its tests
+  (`Tests/NutritionCalibrationTests/`) fake only `MealAnalysisGateway`.
 - `Backend/` — separate Swift package for the small backend that keeps the Gemini and FoodData Central API
   keys off the iPhone. See "Backend" below.
 - `Tests/NutritionCoreTests/` — XCTest suite. Feature tests drive `MealEntryWorkflow` and fake only the

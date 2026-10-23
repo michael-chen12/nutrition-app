@@ -21,6 +21,26 @@ extension MealEntryWorkflow {
         photoSuggestions.map(present)
     }
 
+    /// What photo analysis alone estimates for the suggestions awaiting review: each accepted as offered, as its
+    /// first documented match with the suggested portion (`acceptSuggestion(_:as:)`). Likely duplicates count
+    /// once, as they are reviewed. Nil before analysis. Accuracy calibration compares it with the final reviewed
+    /// estimate (ADR 0002).
+    public var preReviewEstimate: PreReviewEstimate? {
+        photoSuggestions.map { state in
+            var estimates: [NutritionEstimate] = []
+            var withoutEstimate: [String] = []
+            for pending in state.pending {
+                if let food = pending.matches?.first,
+                   let suggested = Self.suggestedPortion(pending.suggestion.portion, for: food) {
+                    estimates.append(NutritionEstimate(food.nutrientsPer100g, grams: suggested.portion.grams))
+                } else {
+                    withoutEstimate.append(pending.suggestion.name)
+                }
+            }
+            return PreReviewEstimate(nutritionEstimate: estimates.total(), suggestionsWithoutEstimate: withoutEstimate)
+        }
+    }
+
     /// Uploads one draft meal photo for hosted analysis and looks up documented foods for each suggestion.
     ///
     /// New suggestions join any still awaiting review. When analysis is unavailable or its output unusable,
@@ -514,6 +534,14 @@ public struct SuggestedFoodMatch: Hashable, Identifiable, Sendable {
         suggestedUnit = converted?.portion.unit
         suggestedQuantity = converted?.portion.quantity
     }
+}
+
+/// The nutrition estimate of photo suggestions accepted as offered (`MealEntryWorkflow.preReviewEstimate`).
+public struct PreReviewEstimate: Hashable, Sendable {
+    public var nutritionEstimate: NutritionEstimate
+    /// Suggestions that add nothing to it: no documented food was found for them, or their portion cannot be
+    /// converted for the food found without guessing.
+    public var suggestionsWithoutEstimate: [String]
 }
 
 /// A suggested portion converted for one food.

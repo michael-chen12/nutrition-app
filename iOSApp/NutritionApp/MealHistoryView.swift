@@ -4,6 +4,8 @@ import SwiftUI
 struct MealHistoryView: View {
     @Bindable var model: MealEntryModel
     @State private var isAddingMealEntry = false
+    /// The developer calibration pilot, while open (debug builds only).
+    @State private var calibration: CalibrationModel?
 
     var body: some View {
         NavigationStack {
@@ -32,14 +34,24 @@ struct MealHistoryView: View {
                 MealEntryDetailView(model: model, id: id)
             }
             .toolbar {
-                Button("New meal entry", systemImage: "plus") {
-                    model.startNewMealEntry()
-                    isAddingMealEntry = true
+                ToolbarItem(placement: .primaryAction) {
+                    Button("New meal entry", systemImage: "plus") {
+                        model.startNewMealEntry()
+                        isAddingMealEntry = true
+                    }
                 }
+                #if DEBUG
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Calibration pilot", systemImage: "scalemass") { calibration = CalibrationModel.makeDefault() }
+                }
+                #endif
             }
             .sheet(isPresented: $isAddingMealEntry) {
                 NewMealEntryView(model: model, isPresented: $isAddingMealEntry)
             }
+            #if DEBUG
+            .fullScreenCover(item: $calibration) { CalibrationPilotView(model: $0) }
+            #endif
         }
     }
 }

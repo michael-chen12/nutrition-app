@@ -18,6 +18,9 @@ targets:
     dependencies:
       - package: NutritionApp
         product: NutritionCore
+      # The developer calibration pilot screen (debug builds).
+      - package: NutritionApp
+        product: NutritionCalibration
     info:
       path: NutritionApp/Info.plist
       properties:
@@ -33,6 +36,10 @@ targets:
         MealAnalysisBackendURL: http://127.0.0.1:8080
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        # Lets the developer copy a calibration pilot folder into Documents through Finder or the Files app.
+        # Meal history stays in Application Support, which is not shared.
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.github.michael-chen12.MealNutrition

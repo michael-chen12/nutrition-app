@@ -59,9 +59,11 @@ final class MealEntryModel {
         return MealPhotoCaptureModel(camera: camera, capture: MealPhotoCapture(camera: camera, workflow: workflow))
     }
 
-    /// Republishes the draft after the camera capture closes.
+    /// Republishes the draft and its photo suggestions after something else changed the workflow: the camera
+    /// capture closing, or a calibration trial's photo analysis.
     func refreshDraftReview() {
         draftReview = workflow.draftReview
+        photoAnalysis = workflow.photoSuggestionReview
     }
 
     func addCustomFood(_ customFood: CustomFood, grams: Double, shownIn photoIDs: [MealPhoto.ID] = []) {

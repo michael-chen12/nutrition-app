@@ -22,7 +22,7 @@ public struct NutrientsPer100g: Codable, Hashable, Sendable {
 
 /// An approximate amount of calories, protein, carbohydrates and fat attributed to pictured food.
 /// Values are unrounded; rounding happens only at presentation (`PresentedNutritionEstimate`).
-public struct NutritionEstimate: Hashable, Sendable {
+public struct NutritionEstimate: Codable, Hashable, Sendable {
     public var calories: Double
     public var protein: Double
     public var carbohydrates: Double
