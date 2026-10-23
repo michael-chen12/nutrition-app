@@ -7,6 +7,7 @@
 // backend is reachable only from this machine).
 
 import AnalysisContract
+import AUSNUT
 import Foundation
 import Hummingbird
 import MealPhotoAnalysis
@@ -16,7 +17,11 @@ let environment = ProcessInfo.processInfo.environment
 let configuration = GeminiConfiguration(environment: environment)
 let service = MealPhotoAnalysisService(configuration: configuration, transport: URLSessionProviderTransport())
 let foodDataCentral = FoodDataCentralConfiguration(environment: environment)
-let foodSearch = FoodSearchService(configuration: foodDataCentral, transport: URLSessionProviderTransport(timeout: 20))
+let foodSearch = FoodSearchService(
+    configuration: foodDataCentral,
+    transport: URLSessionProviderTransport(timeout: 20),
+    ausnut: try AUSNUTDataset.packaged()
+)
 
 if configuration.credential == nil {
     print("GEMINI_API_KEY is not set: photo analysis requests will be answered with notConfigured.")

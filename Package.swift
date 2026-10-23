@@ -17,6 +17,9 @@ let package = Package(
         // USDA FoodData Central records normalized to the contract's documented foods; the backend's food search
         // uses it, so the FDC API key never ships with the app.
         .library(name: "FoodDataCentral", targets: ["FoodDataCentral"]),
+        // FSANZ AUSNUT 2023 (Australia), packaged with its CSV data and normalized to the same documented foods;
+        // the backend searches it beside FoodData Central for dishes FDC covers poorly (ticket #13).
+        .library(name: "AUSNUT", targets: ["AUSNUT"]),
         // The calibration pilot (ticket #12): reference meals, trials through the meal entry workflow, the
         // accuracy report and the pass criteria frozen before validation. The iPhone app runs trials with it.
         .library(name: "NutritionCalibration", targets: ["NutritionCalibration"]),
@@ -27,11 +30,13 @@ let package = Package(
     targets: [
         .target(name: "AnalysisContract"),
         .target(name: "FoodDataCentral", dependencies: ["AnalysisContract"]),
+        .target(name: "AUSNUT", dependencies: ["AnalysisContract"], resources: [.copy("Resources")]),
         .target(name: "NutritionCore", dependencies: ["AnalysisContract"]),
         .target(name: "NutritionCalibration", dependencies: ["NutritionCore"]),
         .executableTarget(name: "NutritionCalibrationTool", dependencies: ["NutritionCalibration"]),
         .testTarget(name: "NutritionCoreTests", dependencies: ["NutritionCore"]),
         .testTarget(name: "FoodDataCentralTests", dependencies: ["FoodDataCentral"]),
+        .testTarget(name: "AUSNUTTests", dependencies: ["AUSNUT"]),
         .testTarget(name: "NutritionCalibrationTests", dependencies: ["NutritionCalibration"]),
     ]
 )

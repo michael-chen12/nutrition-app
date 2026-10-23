@@ -1,9 +1,9 @@
 import Foundation
 
 // Food search in the wire contract: the app asks the backend for documented food records matching a query.
-// The backend looks them up in a documented nutrition source that needs an API key (USDA FoodData Central),
-// so the key stays on the backend. Unlike photo analysis, these replies do carry nutrient values: each comes
-// from a documented record, named with its source and record ID.
+// The backend looks them up in its documented nutrition sources: USDA FoodData Central, which needs an API key
+// (so the key stays on the backend), and the packaged FSANZ AUSNUT 2023 data. Unlike photo analysis, these
+// replies do carry nutrient values: each comes from a documented record, named with its source and record ID.
 
 /// Where the backend serves food search: `POST` a `FoodSearchRequest` as JSON; the reply is a
 /// `FoodSearchResponse` (HTTP 200) or an `AnalysisErrorResponse` (any other status).

@@ -1,17 +1,19 @@
 import AnalysisContract
+import AUSNUT
 import Foundation
 import MealPhotoAnalysis
 import XCTest
 
 /// The backend's food search contract: the app posts a query; the backend looks it up in USDA FoodData Central
-/// with the key only it holds and answers with documented foods in the shared `AnalysisContract`. FDC replies
-/// are hand-built fixtures: no test calls the live API.
+/// with the key only it holds, and in the packaged AUSNUT 2023 data, and answers with documented foods in the
+/// shared `AnalysisContract`. FDC replies and AUSNUT data are hand-built fixtures: no test calls the live API.
 final class FoodSearchContractTests: XCTestCase {
     private func makeService(
         _ transport: ScriptedFoodDataCentralTransport,
-        credential: ProviderCredential? = ProviderCredential(apiKey: FDCFixtures.testKey)
+        credential: ProviderCredential? = ProviderCredential(apiKey: FDCFixtures.testKey),
+        ausnut: AUSNUTDataset = AUSNUTFixtures.noFoods
     ) -> FoodSearchService {
-        FoodSearchService(credential: credential, transport: transport)
+        FoodSearchService(credential: credential, transport: transport, ausnut: ausnut)
     }
 
     private var riceTransport: ScriptedFoodDataCentralTransport {
@@ -44,6 +46,43 @@ final class FoodSearchContractTests: XCTestCase {
             ),
             // 2708347 lacks a fat value, so it cannot back a nutrition estimate and is left out.
         ]))
+    }
+
+    // MARK: FoodData Central and AUSNUT together
+
+    func test_resultsFromBothSourcesAreInterleavedSoOverlappingFoodsAppearSideBySideWithTheirSource() async throws {
+        let reply = await makeService(riceTransport, ausnut: AUSNUTFixtures.rice)
+            .handle(requestBody: FDCFixtures.searchRequestBody("rice white cooked"))
+
+        XCTAssertEqual(reply.statusCode, 200)
+        let foods = try JSONDecoder().decode(FoodSearchResponse.self, from: reply.body).foods
+        XCTAssertEqual(foods.map { "\($0.sourceName) \($0.recordID)" }, [
+            "USDA FoodData Central 2708346",
+            "FSANZ AUSNUT 2023 F007661",
+            "USDA FoodData Central 168878",
+            "FSANZ AUSNUT 2023 F007662",
+        ])
+        XCTAssertEqual(foods.map(\.name), [
+            "Rice, white, cooked, no added fat",
+            "Rice, white, cooked",
+            "Rice, white, long-grain, regular, enriched, cooked",
+            "Rice, white, cooked with coconut milk",
+        ])
+    }
+
+    func test_whenFDCHasNoMatchAUSNUTFoodsAreAnsweredUpToTheResultLimit() async throws {
+        let transport = ScriptedFoodDataCentralTransport(
+            search: .response(statusCode: 200, body: #"{ "totalHits": 0, "foods": [] }"#)
+        )
+
+        let reply = await makeService(transport, ausnut: AUSNUTFixtures.sushi(count: 12))
+            .handle(requestBody: FDCFixtures.searchRequestBody("sushi"))
+
+        XCTAssertEqual(reply.statusCode, 200)
+        let foods = try JSONDecoder().decode(FoodSearchResponse.self, from: reply.body).foods
+        XCTAssertEqual(foods.map(\.recordID), (1...10).map { String(format: "F9%05d", $0) })
+        XCTAssertEqual(Set(foods.map(\.sourceName)), ["FSANZ AUSNUT 2023"])
+        XCTAssertEqual(transport.sentRequests.count, 1, "No FDC records to fetch")
     }
 
     func test_searchThenFetchesFullRecordsWithTheKeyOnlyInARequestHeader() async throws {

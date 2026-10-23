@@ -1,0 +1,2 @@
+# Packaged nutrition source data is kept byte-for-byte as exported from the publisher's workbook.
+Sources/AUSNUT/Resources/*.csv -text

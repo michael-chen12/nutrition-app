@@ -3,8 +3,8 @@
 // analysis and food search in the shared `AnalysisContract` (root package).
 //
 // `MealPhotoAnalysis` holds every decision (request validation, Gemini request building, response validation,
-// FoodData Central search and normalization through the shared `FoodDataCentral` adapter, failure mapping,
-// credential handling) and tests on any platform without a network or a real key.
+// food search over FoodData Central and the packaged AUSNUT 2023 data through the shared `FoodDataCentral` and
+// `AUSNUT` adapters, failure mapping, credential handling) and tests on any platform without a network or a real key.
 // `MealPhotoAnalysisServer` is a thin Hummingbird HTTP server around it. Hummingbird (and SwiftNIO's
 // networking) does not build on Windows, so on Windows this package leaves the server out and `swift test`
 // covers the library only; build and run the server on macOS or Linux.
@@ -25,9 +25,18 @@ var targets: [Target] = [
         dependencies: [
             .product(name: "AnalysisContract", package: "NutritionApp"),
             .product(name: "FoodDataCentral", package: "NutritionApp"),
+            .product(name: "AUSNUT", package: "NutritionApp"),
         ]
     ),
-    .testTarget(name: "MealPhotoAnalysisTests", dependencies: ["MealPhotoAnalysis"]),
+    .testTarget(
+        name: "MealPhotoAnalysisTests",
+        dependencies: [
+            "MealPhotoAnalysis",
+            .product(name: "AUSNUT", package: "NutritionApp"),
+            // The feature test runs the app's meal entry workflow and HTTP gateway against this backend in-process.
+            .product(name: "NutritionCore", package: "NutritionApp"),
+        ]
+    ),
 ]
 
 #if !os(Windows)
@@ -44,6 +53,7 @@ targets += [
         dependencies: [
             "MealPhotoAnalysis",
             .product(name: "AnalysisContract", package: "NutritionApp"),
+            .product(name: "AUSNUT", package: "NutritionApp"),
             .product(name: "Hummingbird", package: "hummingbird"),
             .product(name: "NIOCore", package: "swift-nio"),
         ]
