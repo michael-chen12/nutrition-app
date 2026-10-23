@@ -143,10 +143,18 @@ public struct UnresolvedDetail: Codable, Hashable, Sendable {
     public var kind: Kind
     /// Shown to the person, e.g. "Cooking oil not visible".
     public var detail: String
+    /// The focused question to ask the person about it, e.g. "Was it cooked in oil? How much?"; nil when the
+    /// analysis gave none (the app then asks about `detail` itself).
+    public var question: String?
+    /// For a hidden ingredient or preparation detail: a short query for looking up what the person may add
+    /// in documented nutrition sources, e.g. "oil vegetable".
+    public var searchQuery: String?
 
-    public init(kind: Kind, detail: String) {
+    public init(kind: Kind, detail: String, question: String? = nil, searchQuery: String? = nil) {
         self.kind = kind
         self.detail = detail
+        self.question = question
+        self.searchQuery = searchQuery
     }
 }
 

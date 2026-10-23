@@ -119,11 +119,56 @@ public enum PortionUnit: Hashable, Sendable {
     case serving(ServingUnit)
 }
 
-/// A specific unresolved detail about a reviewed food (ingredient, preparation or portion).
-public struct UncertaintyNote: Codable, Hashable, Sendable {
-    public var detail: String
+/// A specific unresolved detail about a reviewed food (ingredient, preparation or portion). The review asks
+/// the person about it as a focused question; it stays with the food until they answer or dismiss it.
+public struct UncertaintyNote: Codable, Hashable, Identifiable, Sendable {
+    /// What the detail is about.
+    public enum Kind: String, Codable, Hashable, Sendable {
+        /// Which food it is.
+        case identity
+        /// An ingredient that may be present but cannot be seen (e.g. the oil used).
+        case ingredient
+        /// How it was prepared (e.g. fried or baked).
+        case preparation
+        /// How much there is.
+        case portion
+    }
 
-    public init(detail: String) {
+    public var id: UUID
+    /// e.g. "Cooking oil not visible".
+    public var detail: String
+    /// Nil for details noted without a kind (e.g. saved before kinds existed).
+    public var kind: Kind?
+    /// The focused question to ask, e.g. "Was it cooked in oil? How much?"; nil to ask about `detail` itself.
+    public var question: String?
+    /// A query for documented foods the person may add to answer it, e.g. "oil vegetable".
+    public var searchQuery: String?
+
+    public init(
+        id: UUID = UUID(),
+        detail: String,
+        kind: Kind? = nil,
+        question: String? = nil,
+        searchQuery: String? = nil
+    ) {
+        self.id = id
         self.detail = detail
+        self.kind = kind
+        self.question = question
+        self.searchQuery = searchQuery
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, detail, kind, question, searchQuery
+    }
+
+    /// Notes saved before focused questions existed decode with a new identity and only their detail.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        detail = try container.decode(String.self, forKey: .detail)
+        kind = try container.decodeIfPresent(Kind.self, forKey: .kind)
+        question = try container.decodeIfPresent(String.self, forKey: .question)
+        searchQuery = try container.decodeIfPresent(String.self, forKey: .searchQuery)
     }
 }

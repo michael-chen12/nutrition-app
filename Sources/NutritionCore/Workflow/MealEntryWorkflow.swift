@@ -139,7 +139,7 @@ public final class MealEntryWorkflow {
                 .uniqued()
             entry.reviewedFoods[keptIndex].uncertaintyNotes = (
                 entry.reviewedFoods[keptIndex].uncertaintyNotes + repeated.uncertaintyNotes
-            ).uniqued()
+            ).uniquedByContent()
         }
     }
 
@@ -303,6 +303,9 @@ public enum MealEntryWorkflowError: Error, Equatable {
     case suggestionNotFound(PresentedFoodSuggestion.ID)
     /// The suggested portion cannot be converted for the chosen food without guessing; enter a portion instead.
     case suggestedPortionUnavailable
+    /// The referenced focused question is not open in the meal entry under review (already answered or
+    /// dismissed, or never asked).
+    case questionNotFound(UncertaintyNote.ID)
 }
 
 extension Array where Element: Hashable {

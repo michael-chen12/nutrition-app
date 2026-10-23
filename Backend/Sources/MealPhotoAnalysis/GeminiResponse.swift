@@ -57,7 +57,12 @@ enum GeminiResponse {
                 portion: try food.portion.map(validated),
                 unresolvedDetails: food.unresolvedDetails.compactMap { detail in
                     let text = trimmed(detail.detail)
-                    return text.isEmpty ? nil : UnresolvedDetail(kind: detail.kind, detail: text)
+                    return text.isEmpty ? nil : UnresolvedDetail(
+                        kind: detail.kind,
+                        detail: text,
+                        question: nonEmpty(detail.question),
+                        searchQuery: nonEmpty(detail.searchQuery)
+                    )
                 }
             )
         }
@@ -85,6 +90,11 @@ enum GeminiResponse {
 
     private static func trimmed(_ text: String) -> String {
         text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func nonEmpty(_ text: String?) -> String? {
+        guard let text = text.map(trimmed), !text.isEmpty else { return nil }
+        return text
     }
 
     // MARK: Wire shapes
@@ -148,6 +158,8 @@ enum GeminiResponse {
         struct Detail: Decodable {
             var kind: UnresolvedDetail.Kind
             var detail: String
+            var question: String?
+            var searchQuery: String?
         }
 
         struct DuplicateGroup: Decodable {

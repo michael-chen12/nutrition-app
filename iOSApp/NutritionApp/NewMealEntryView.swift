@@ -39,7 +39,7 @@ struct NewMealEntryView: View {
                 if let photos = model.draftReview?.photos, !photos.isEmpty {
                     PhotoSuggestionsSection(model: model, photos: photos)
                 }
-                Section("Find a documented food") {
+                Section {
                     TextField("Search foods", text: $searchQuery)
                         .submitLabel(.search)
                         .onSubmit { Task { await model.searchFoods(matching: searchQuery) } }
@@ -70,6 +70,10 @@ struct NewMealEntryView: View {
                         portion
                         Button("Add \(chosenResult.name)", action: addChosenFood).disabled(!portion.canSubmit)
                     }
+                } header: {
+                    Text("Find a documented food")
+                } footer: {
+                    Text("You can also add oils, sauces or drinks the photos don't show.")
                 }
                 Section("Custom food (per 100 g)") {
                     TextField("Food name", text: $foodName)
@@ -107,8 +111,12 @@ struct NewMealEntryView: View {
                         Text("Tap a food to correct its portion in grams or a serving unit. Long-press it to note it "
                             + "in another photo. Swipe to remove it.")
                     }
+                    if !review.focusedQuestions.isEmpty {
+                        FocusedQuestionsSection(model: model, review: review)
+                    }
                     Section {
                         NutritionEstimateView(estimate: review.nutritionEstimate)
+                        if let summary = review.uncertaintySummary { UncertaintySummaryView(summary: summary) }
                         PicturedFoodNoteView(note: review.picturedFoodNote)
                     }
                 }

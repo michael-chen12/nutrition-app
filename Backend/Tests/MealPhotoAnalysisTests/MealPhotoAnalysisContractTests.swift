@@ -51,6 +51,45 @@ final class MealPhotoAnalysisContractTests: XCTestCase {
         ))
     }
 
+    /// Ticket #11: for a mixed dish the analysis names what the photo cannot show and the focused question to
+    /// ask, with a search for the hidden ingredient, instead of inventing an answer.
+    func test_mixedDishUnknownsArriveAsFocusedQuestionsInsteadOfGuesses() async throws {
+        let output = """
+        {
+          "foods": [
+            { "id": "1", "name": "Vegetable fried rice", "searchQuery": "fried rice vegetable",
+              "photoIds": ["\(Fixtures.photoID)"], "portion": { "quantity": 1.5, "unit": "cup" },
+              "unresolvedDetails": [
+                { "kind": "preparation", "detail": "Cooking oil not visible",
+                  "question": " Was it cooked in oil? How much? ", "searchQuery": "oil vegetable" },
+                { "kind": "ingredient", "detail": "Sauce under the rice can't be identified",
+                  "question": "Which sauce was added?", "searchQuery": "" },
+                { "kind": "portion", "detail": "Bowl depth unclear", "question": "  " }
+              ] }
+          ],
+          "duplicateGroups": []
+        }
+        """
+        let transport = RecordingProviderTransport(.response(
+            statusCode: 200, body: Fixtures.generateContentReply(modelText: output)
+        ))
+
+        let reply = await makeService(transport).handle(requestBody: Fixtures.analysisRequestBody())
+
+        XCTAssertEqual(reply.statusCode, 200)
+        let response = try JSONDecoder().decode(MealPhotoAnalysisResponse.self, from: reply.body)
+        XCTAssertEqual(response.suggestions.first?.unresolvedDetails, [
+            UnresolvedDetail(
+                kind: .preparation, detail: "Cooking oil not visible",
+                question: "Was it cooked in oil? How much?", searchQuery: "oil vegetable"
+            ),
+            UnresolvedDetail(
+                kind: .ingredient, detail: "Sauce under the rice can't be identified", question: "Which sauce was added?"
+            ),
+            UnresolvedDetail(kind: .portion, detail: "Bowl depth unclear"),
+        ])
+    }
+
     func test_modelNutrientGuessesNeverReachTheApp() async throws {
         let transport = RecordingProviderTransport(.response(
             statusCode: 200, body: Fixtures.generateContentReply(modelText: Fixtures.riceAndChickenOutput)
@@ -127,9 +166,11 @@ final class MealPhotoAnalysisContractTests: XCTestCase {
         XCTAssertEqual(generationConfig["responseMimeType"] as? String, "application/json")
         let schema = try XCTUnwrap(generationConfig["responseSchema"] as? [String: Any])
         let schemaText = String(decoding: try JSONSerialization.data(withJSONObject: schema), as: UTF8.self)
-        for field in ["foods", "searchQuery", "photoIds", "portion", "unresolvedDetails", "duplicateGroups"] {
+        for field in ["foods", "searchQuery", "photoIds", "portion", "unresolvedDetails", "question", "duplicateGroups"] {
             XCTAssertTrue(schemaText.contains("\"\(field)\""), "Schema asks for \(field)")
         }
+        XCTAssertTrue(prompt.contains("instead of guessing"), "Unknowns are asked about, not invented")
+        XCTAssertTrue(prompt.contains("oil"), "The prompt names high-impact hidden ingredients such as oil")
         XCTAssertFalse(schemaText.lowercased().contains("calorie"), "Schema never asks for nutrient values")
     }
 

@@ -156,6 +156,34 @@ final class MealEntryModel {
         photoAnalysis = workflow.photoSuggestionReview
     }
 
+    // MARK: Focused questions
+
+    /// Answers a focused question by adding a documented food (e.g. the cooking oil).
+    func answerQuestion(
+        _ id: PresentedFocusedQuestion.ID, byAdding result: FoodSearchResult, quantity: Double, unit: PortionUnit
+    ) {
+        perform { _ = try workflow.answerQuestion(id, byAdding: result, quantity: quantity, unit: unit) }
+        draftReview = workflow.draftReview
+    }
+
+    /// Answers a focused question by adding a custom food (e.g. a sauce with no documented match).
+    func answerQuestion(_ id: PresentedFocusedQuestion.ID, byAddingCustomFood customFood: CustomFood, grams: Double) {
+        perform { _ = try workflow.answerQuestion(id, byAddingCustomFood: customFood, grams: grams) }
+        draftReview = workflow.draftReview
+    }
+
+    /// Answers a focused question by correcting the portion of the food it is about.
+    func answerQuestion(_ id: PresentedFocusedQuestion.ID, byChangingPortionTo quantity: Double, unit: PortionUnit) {
+        perform { try workflow.answerQuestion(id, byChangingPortionTo: quantity, unit: unit) }
+        draftReview = workflow.draftReview
+    }
+
+    /// The detail doesn't apply (e.g. no oil was used).
+    func dismissQuestion(_ id: PresentedFocusedQuestion.ID) {
+        perform { try workflow.dismissQuestion(id) }
+        draftReview = workflow.draftReview
+    }
+
     func open(_ id: MealEntry.ID) -> MealEntryPresentation? {
         var opened: MealEntryPresentation?
         perform { opened = try workflow.openMealEntry(id: id) }
@@ -178,6 +206,8 @@ final class MealEntryModel {
             errorMessage = "No gram weight is documented for \(unitName). Enter grams instead."
         } catch MealEntryWorkflowError.suggestedPortionUnavailable {
             errorMessage = "The suggested portion can't be converted for this food. Enter a portion instead."
+        } catch MealEntryWorkflowError.questionNotFound {
+            errorMessage = "This question has already been answered."
         } catch {
             errorMessage = "Something went wrong. Please try again."
         }

@@ -45,10 +45,13 @@ public struct PresentedReviewedFood: Hashable, Identifiable, Sendable {
     public var sourceRecordID: String?
     public var nutritionEstimate: PresentedNutritionEstimate
     public var uncertaintyNotes: [String]
+    /// The same unresolved details, asked as focused questions (see FocusedQuestions.swift).
+    public var focusedQuestions: [PresentedFocusedQuestion]
     /// Which meal photos show this food, e.g. "Photos 1 and 2"; nil when no photo is noted.
     public var shownIn: String?
 
     init(_ reviewedFood: ReviewedFood, photoNumbers: [MealPhoto.ID: Int] = [:]) {
+        focusedQuestions = reviewedFood.uncertaintyNotes.map { PresentedFocusedQuestion($0, about: reviewedFood) }
         shownIn = PhotoReferenceFormat.shownIn(reviewedFood.photoIDs.compactMap { photoNumbers[$0] })
         id = reviewedFood.id
         name = reviewedFood.food.name
@@ -172,6 +175,8 @@ public struct MealHistoryRow: Hashable, Identifiable, Sendable {
     public var date: Date
     public var foodNames: [String]
     public var nutritionEstimate: PresentedNutritionEstimate
+    /// The meal entry's uncertainty flag: some detail is still unresolved, so its estimate may be off.
+    public var hasUnresolvedUncertainty = false
 }
 
 extension MealHistoryRow {
@@ -182,6 +187,7 @@ extension MealHistoryRow {
             foodNames: entry.reviewedFoods.map(\.food.name),
             nutritionEstimate: PresentedNutritionEstimate(entry.nutritionEstimate)
         )
+        hasUnresolvedUncertainty = entry.reviewedFoods.contains { !$0.uncertaintyNotes.isEmpty }
     }
 }
 

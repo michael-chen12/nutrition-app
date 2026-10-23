@@ -34,6 +34,9 @@ struct ReviewedFoodRow: View {
             if let shownIn = food.shownIn {
                 Text(shownIn).font(.caption).foregroundStyle(.secondary)
             }
+            ForEach(food.uncertaintyNotes, id: \.self) { note in
+                Label(note, systemImage: "questionmark.circle").font(.caption).foregroundStyle(.orange)
+            }
         }
     }
 }

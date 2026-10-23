@@ -159,7 +159,7 @@ extension MealEntryWorkflow {
             food,
             portion: portion,
             shownIn: pending.photoIDs,
-            uncertaintyNotes: pending.suggestion.unresolvedDetails.map { UncertaintyNote(detail: $0.detail) }
+            uncertaintyNotes: pending.suggestion.unresolvedDetails.map(UncertaintyNote.init)
         )
         photoSuggestions?.pending.removeAll { $0.id == pending.id }
         return foodID

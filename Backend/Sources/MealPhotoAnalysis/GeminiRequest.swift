@@ -51,7 +51,13 @@ enum GeminiRequest {
     you can reasonably estimate them. Leave it out if you cannot judge the amount.
     - unresolvedDetails: each specific thing the photos cannot settle, instead of guessing: which food it is \
     (identity), an ingredient that may be present but cannot be seen (ingredient), how it was prepared \
-    (preparation), or how much there is (portion).
+    (preparation), or how much there is (portion). For each, give the detail, a short focused question to ask \
+    the person (for example "Was it cooked in oil? How much?"), and, when the answer may mean adding a hidden \
+    ingredient, a searchQuery for that ingredient (for example "oil vegetable").
+
+    For mixed dishes, ask about high-impact details a photo cannot show, such as cooking oil or butter, sauces \
+    and dressings, added sugar, and whether the food was fried. Ask instead of guessing: never state a hidden \
+    ingredient, preparation or amount as fact.
 
     If the same food appears in more than one photo, list it once for each photo and put those ids in one \
     duplicateGroups entry with a short reason.
@@ -91,6 +97,8 @@ enum GeminiRequest {
                                         "enum": .array(UnresolvedDetail.Kind.allCases.map { .string($0.rawValue) }),
                                     ],
                                     "detail": ["type": "STRING"],
+                                    "question": ["type": "STRING"],
+                                    "searchQuery": ["type": "STRING"],
                                 ],
                                 "required": ["kind", "detail"],
                             ],
