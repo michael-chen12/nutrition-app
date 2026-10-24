@@ -1,0 +1,22 @@
+{
+  "id": "REPLACE-meal-id",
+  "split": "validation",
+  "cuisine": "REPLACE cuisine",
+  "dishType": "REPLACE dish type",
+  "referenceMethod": "weighedPortions",
+  "consent": {
+    "participantCode": "REPLACE participant code",
+    "consentedOn": "2000-01-01T00:00:00Z",
+    "coversPhotoAnalysisUpload": false
+  },
+  "photoFileNames": ["REPLACE-meal-id-above.jpg", "REPLACE-meal-id-side.jpg"],
+  "referenceFoods": [
+    {
+      "id": "REPLACE-food-id",
+      "name": "REPLACE food name",
+      "grams": 0,
+      "nutrientsPer100g": { "calories": 0, "protein": 0, "carbohydrates": 0, "fat": 0 },
+      "nutritionSource": "REPLACE source of the per-100 g values"
+    }
+  ]
+}

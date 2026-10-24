@@ -48,7 +48,17 @@ public final class CalibrationPilot {
             }
             meals.append(meal)
         }
+        try Self.checkConsistentNames(meals.map(\.cuisine), .cuisine)
+        try Self.checkConsistentNames(meals.map(\.dishType), .dishType)
         return meals.sorted { $0.id < $1.id }
+    }
+
+    /// Each cuisine and dish type is written one way, so the diversity checks and the report count it once.
+    private static func checkConsistentNames(_ names: [String], _ grouping: ReportGrouping) throws {
+        let spellings = Dictionary(grouping: Set(names)) { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+        if let variants = spellings.values.map({ $0.sorted() }).filter({ $0.count > 1 }).min(by: { $0[0] < $1[0] }) {
+            throw CalibrationPilotError.inconsistentGroupName(grouping, variants)
+        }
     }
 
     /// The meal's photos, in the order it names them. Refused for a validation meal that reuses a calibration
@@ -106,11 +116,15 @@ public final class CalibrationPilot {
         try Self.encoder.encode(evaluation).write(to: url, options: .atomic)
     }
 
-    /// Every recorded evaluation, in reference meal ID order.
+    /// Every recorded evaluation, in reference meal ID order. Throws when two are for the same meal.
     public func evaluations() throws -> [MealEvaluation] {
-        try jsonFiles(in: evaluationsDirectory)
+        let evaluations = try jsonFiles(in: evaluationsDirectory)
             .map { try Self.decoder.decode(MealEvaluation.self, from: Data(contentsOf: $0)) }
             .sorted { $0.referenceMealID < $1.referenceMealID }
+        if let repeated = zip(evaluations, evaluations.dropFirst()).first(where: { $0.referenceMealID == $1.referenceMealID }) {
+            throw CalibrationPilotError.duplicateEvaluation(repeated.0.referenceMealID)
+        }
+        return evaluations
     }
 
     /// The accuracy report for the calibration set. Validation meals never appear in it.
@@ -241,6 +255,11 @@ public enum CalibrationPilotError: Error, Equatable {
     case invalidReferenceMeal(ReferenceMeal.ID, ReferenceMealProblem)
     /// Two reference meal files share an ID.
     case duplicateReferenceMeal(ReferenceMeal.ID)
+    /// Reference meals name one cuisine or dish type in ways that differ only in case or surrounding spaces, so
+    /// it would count, and be reported, as several. The names as written, sorted.
+    case inconsistentGroupName(ReportGrouping, [String])
+    /// Two evaluation files are for the same reference meal, which would count it twice.
+    case duplicateEvaluation(ReferenceMeal.ID)
     /// A reference meal names a photo that is not in the photos folder.
     case missingPhoto(String)
     /// A validation meal's photo is identical to a calibration meal's, so it is not a new meal.

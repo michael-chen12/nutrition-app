@@ -63,7 +63,50 @@ final class CalibrationPilotTests: XCTestCase {
         }
     }
 
+    func test_cuisinesOrDishTypesThatDifferOnlyInCaseOrSpacingAreRefused() throws {
+        // Otherwise one cuisine would count as two towards a diverse set, and be reported as two groups.
+        try write(meal("ramen", cuisine: "Japanese", dishType: "Soup", foods: [food("ramen", calories: 400, protein: 15, carbohydrates: 55, fat: 10)]))
+        try write(meal("udon", cuisine: "japanese ", dishType: "Soup", foods: [food("udon", calories: 350, protein: 12, carbohydrates: 60, fat: 5)]))
+
+        XCTAssertThrowsError(try pilot.referenceMeals()) { error in
+            XCTAssertEqual(error as? CalibrationPilotError, .inconsistentGroupName(.cuisine, ["Japanese", "japanese "]))
+        }
+
+        try write(meal("udon", cuisine: "Japanese", dishType: "soup", foods: [food("udon", calories: 350, protein: 12, carbohydrates: 60, fat: 5)]))
+        XCTAssertThrowsError(try pilot.referenceMeals()) { error in
+            XCTAssertEqual(error as? CalibrationPilotError, .inconsistentGroupName(.dishType, ["Soup", "soup"]))
+        }
+    }
+
+    func test_theReferenceMealTemplateIsInTheFormatThePilotReadsAndIsRefusedUntilFilledIn() throws {
+        let template = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("docs/calibration/reference-meal-template.json")
+        let folder = directory.url.appendingPathComponent("reference-meals", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(at: template, to: folder.appendingPathComponent("template.json"))
+
+        XCTAssertThrowsError(try pilot.referenceMeals()) { error in
+            XCTAssertEqual(error as? CalibrationPilotError, .invalidReferenceMeal("REPLACE-meal-id", .photoUploadNotConsented))
+        }
+    }
+
     // MARK: Evaluations
+
+    func test_twoEvaluationFilesForOneMealAreRefusedRatherThanCountedTwice() throws {
+        try write(meal("ramen", cuisine: "Japanese", dishType: "Soup", foods: [food("ramen", calories: 400, protein: 15, carbohydrates: 55, fat: 10)]))
+        try pilot.record(evaluation("ramen", preReview: (300, 10, 50, 5), reviewed: (380, 14, 54, 9), correctionTime: 60))
+        // e.g. Finder's copy when the pilot folder is copied in and out of the app.
+        let evaluations = directory.url.appendingPathComponent("evaluations", isDirectory: true)
+        try FileManager.default.copyItem(
+            at: evaluations.appendingPathComponent("ramen.json"), to: evaluations.appendingPathComponent("ramen copy.json")
+        )
+
+        XCTAssertThrowsError(try pilot.evaluations()) { error in
+            XCTAssertEqual(error as? CalibrationPilotError, .duplicateEvaluation("ramen"))
+        }
+        XCTAssertThrowsError(try pilot.calibrationReport())
+    }
 
     func test_recordedEvaluationsAreReadBackAndReportedForTheCalibrationSetOnly() throws {
         let meals = [
