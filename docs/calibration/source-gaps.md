@@ -36,10 +36,17 @@ dishes, and it is the only one that documents gram weights for servings such as 
 - Density rows give grams per mL, not a serving, so the adapter leaves them out. Curries and laksa have only a
   density row, so the person enters them in grams.
 
-**Overlap with FDC.** Both sources have plain foods such as cooked rice. Search results alternate between the
-two sources, FDC first, and every result shows its source name and record ID. The person picks the suitable
+**Overlap with FDC.** Both sources have plain foods such as cooked rice. Search puts foods whose name has every
+word of the search first, from either source, because FDC returns something for almost any search (ADR 0006).
+Within that group and the rest, results alternate between the two sources, FDC first, so plain foods both
+sources match keep FDC first. Every result shows its source name and record ID. The person picks the suitable
 match or adds a custom food. The backend packages AUSNUT, so search still returns AUSNUT foods when FDC has no
 key or fails.
+
+**Photo suggestion wording.** A photo suggestion may name a dish with a word AUSNUT's names lack, such as
+"salmon sushi roll" for "Sushi, salmon". When no AUSNUT name has every word, AUSNUT search retries with one word
+left out. A few dish names are searched in AUSNUT's words, such as "gyoza" as "fried dumpling". The test list of
+gap-dish queries in `Tests/AUSNUTTests/AUSNUTDatasetTests.swift` checks that each finds its AUSNUT food.
 
 **Before shipping.** FSANZ's [copyright page](https://www.foodstandards.gov.au/copyright) licenses its website
 material under CC BY 4.0, including commercial use, but does not name AUSNUT. Confirm with FSANZ that the
