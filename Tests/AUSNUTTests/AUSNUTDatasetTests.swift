@@ -116,6 +116,49 @@ final class AUSNUTDatasetTests: XCTestCase {
         XCTAssertEqual(dataset.search("laksa", limit: 10).map(\.recordID), ["F008589", "F008588"])
     }
 
+    /// Photo suggestions name dishes in their own words. For each gap dish (docs/calibration/source-gaps.md),
+    /// the AUSNUT food a person would choose is among the results food search can offer.
+    func test_photoSuggestionQueriesForTheGapDishesFindTheirAUSNUTFood() throws {
+        let dataset = try AUSNUTDataset.packaged()
+        let expectedFoodByQuery: KeyValuePairs = [
+            "salmon sushi roll": "F009009",  // Sushi, salmon
+            "tuna sushi roll": "F009013",  // Sushi, tuna
+            "salmon nigiri": "F009010",  // Sushi, nigiri or aburi, salmon
+            "california roll": "F008992",  // Sushi, california roll
+            "vegetable sushi": "F009015",  // Sushi, vegetable
+            "inari sushi": "F009002",  // Sushi, fried bean curd (inari)
+            "chicken laksa": "F008588",  // Soup, laksa, beef, chicken or pork, with noodles, made with coconut milk
+            "prawn laksa": "F008589",  // Soup, laksa, prawn or seafood, with noodles, made with coconut milk
+            "curry laksa": "F008589",
+            "wonton soup": "F008675",  // Soup, wonton
+            "wonton noodle soup": "F008675",
+            "beef pho": "F008510",  // Soup, broth with meat & noodles
+            "pork ramen": "F008510",
+            "steamed pork dumplings": "F003652",  // Dumpling, savoury, meat, steamed, boiled or microwaved
+            "pork gyoza": "F003651",  // Dumpling, savoury, meat, fried
+            "prawn dumplings": "F010533",  // Dumpling, savoury, prawn, purchased frozen, cooked
+            "vegetable dumplings": "F003655",  // Dumpling, savoury, vegetable, steamed, boiled or microwaved
+            "dim sims": "F003511",  // Dim sim, vegetable & meat filling, purchased frozen, microwaved or steamed
+            "chicken curry": "F003377",  // Curry, homemade, chicken, coconut milk sauce
+            "green chicken curry": "F003377",
+            "beef rendang": "F003359",  // Curry, homemade, beef, coconut based sauce
+            "fish curry": "F003387",  // Curry, homemade, fish
+            "chickpea curry": "F003336",  // Curry, homemade, chickpea/legumes
+            "lentil dal": "F003398",  // Curry, homemade, lentils (dhal)
+            "palak paneer": "F003354",  // Curry, spinach (palak paneer)
+        ]
+
+        var misses: [String] = []
+        for (query, key) in expectedFoodByQuery {
+            // The backend asks AUSNUT for at most 10 foods.
+            let found = dataset.search(query, limit: 10)
+            if !found.contains(where: { $0.recordID == key }) {
+                misses.append("\(query) → \(key), found \(found.map { "\($0.recordID) \($0.name)" })")
+            }
+        }
+        XCTAssertEqual(misses, [], misses.joined(separator: "\n"))
+    }
+
     /// Foods with the given keys and names and the same illustrative nutrients, without measures.
     static func dataset(named foods: [(key: String, name: String)]) throws -> AUSNUTDataset {
         let rows = foods.map { #"1,\#($0.key),Recipe,"\#($0.name)",600,590,7,2,23,23,1"# }

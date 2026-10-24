@@ -79,9 +79,9 @@ public struct AUSNUTDataset: Sendable {
     /// find: a photo suggestion's query often has a word AUSNUT's names lack, such as "roll" in "salmon sushi
     /// roll" for "Sushi, salmon" (ADR 0006). Either way, names with fewer words beyond the query come first, then
     /// the workbook's order, so "rice white cooked" puts "Rice, white, cooked" before "Rice, white, cooked with
-    /// coconut milk".
+    /// coconut milk". A few dish names AUSNUT words otherwise are searched in AUSNUT's words (`wordSwaps`).
     public func search(_ query: String, limit: Int) -> [DocumentedFood] {
-        let query = FoodNameQuery(query)
+        let query = FoodNameQuery(Self.swappingWords(in: query))
         guard !query.isEmpty, limit > 0 else { return [] }
 
         var matches = unmatchedWordCountByFood(matching: query)
@@ -105,6 +105,24 @@ public struct AUSNUTDataset: Sendable {
 
     /// Each food's name split into words, parallel to `foods`.
     private let nameWords: [[String]]
+
+    /// Photo-suggestion words for dishes, in the words AUSNUT names them with. Each was added for a query the
+    /// gap-dish list in `AUSNUTDatasetTests` showed finding nothing useful; add one only for such a miss (ADR 0006).
+    /// "curry laksa" drops "curry": alone it would rank every curry ahead of the laksa.
+    private static let wordSwaps: KeyValuePairs = [
+        "curry laksa": "laksa",
+        "gyoza": "fried dumpling",
+        "pho": "broth noodle",
+        "ramen": "broth noodle",
+        "rendang": "curry",
+    ]
+
+    /// The query's words, with each run of words in `wordSwaps` replaced.
+    private static func swappingWords(in query: String) -> String {
+        wordSwaps.reduce(" \(FoodNameQuery.words(in: query).joined(separator: " ")) ") { text, swap in
+            text.replacingOccurrences(of: " \(swap.key) ", with: " \(swap.value) ")
+        }
+    }
 
     static let kilojoulesPerKilocalorie = 4.184
 
