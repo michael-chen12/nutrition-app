@@ -17,7 +17,8 @@ reports. None of this runs in CI on real meals; CI tests it with hand-built reco
 
 ## 1. Collect reference meals
 
-For each meal:
+For each meal (a checklist and a JSON template to fill in are in
+[`collecting-a-reference-meal.md`](collecting-a-reference-meal.md)):
 
 1. Get the participant's written consent, covering the meal photos being uploaded for photo analysis under the
    provider's retention terms (see `PhotoAnalysisDisclosure`). Record them only by a code such as `P01`.
@@ -66,7 +67,8 @@ A reference meal (`ReferenceMeal`; dates are ISO 8601):
 
 `split` is `calibration` or `validation`; `referenceMethod` is `weighedPortions` or `knownRecipe`. A meal without
 upload consent, a participant code, a cuisine and dish type, photos, or reference foods with positive grams is
-refused. Keep the pilot folder in version control (outside this repository if photos are private) so its history
+refused. So are cuisines or dish types written two ways that differ only in case or spacing (`Japanese` and
+`japanese`), which would count as two. Keep the pilot folder in version control (outside this repository if photos are private) so its history
 shows when each record and the criteria were written.
 
 ## 3. Run trials in the app
@@ -83,7 +85,8 @@ shows when each record and the criteria were written.
    it. These give the **missing-food rate** of each stage. Record the evaluation.
 
 Trial meal entries are saved apart from the person's meal history. A meal is evaluated once; discard a trial to
-run it again, for example after a backend outage. Until the pass criteria are frozen only calibration meals can
+run it again, for example after a backend outage. Two evaluation files for one meal (e.g. a Finder copy) are
+refused rather than counted twice. Until the pass criteria are frozen only calibration meals can
 be run; after, only validation meals, so no validation result exists before the criteria do. Every food starts
 labelled as found: check each one rather than recording the defaults.
 
