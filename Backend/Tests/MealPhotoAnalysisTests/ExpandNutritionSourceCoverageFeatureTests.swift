@@ -70,6 +70,39 @@ final class ExpandNutritionSourceCoverageFeatureTests: XCTestCase {
         assertShowsThreeSalmonSushiPieces(reopened.nutritionEstimate)
     }
 
+    func test_aDishDocumentedOnlyInGramsIsAddedInGramsSavedAndReopenedWithItsSourceAfterRelaunch() async throws {
+        let firstLaunch = MealEntryWorkflow(
+            store: try FileMealHistoryStore(directory: historyDirectory),
+            gateway: try gateway(fdcSearchReply: FDCFixtures.riceSearchReply, fdcFoodsReply: FDCFixtures.riceFoodsReply)
+        )
+        firstLaunch.startNewMealEntry()
+
+        // FDC answers with foods whose names lack "laksa"; AUSNUT's laksa has it, so it comes first.
+        let search = try await firstLaunch.searchFoods(matching: "laksa")
+        let laksa = try XCTUnwrap(search.results.first)
+        XCTAssertEqual(laksa.name, "Soup, laksa, prawn or seafood, with noodles, made with coconut milk")
+        XCTAssertEqual(laksa.sourceName, "FSANZ AUSNUT 2023")
+        XCTAssertEqual(laksa.sourceRecordID, "F008589")
+        XCTAssertEqual(laksa.portionUnits.map(\.name), ["g"], "AUSNUT documents only its density, in g per mL")
+
+        try firstLaunch.addFood(laksa, quantity: 400, unit: laksa.portionUnits[0].unit)
+        let review = try XCTUnwrap(firstLaunch.draftReview)
+        XCTAssertEqual(review.foods.map(\.portion), ["400 g"])
+        assertShowsFourHundredGramsOfPrawnLaksa(review.nutritionEstimate)
+        let id = try firstLaunch.saveMealEntry()
+
+        let secondLaunch = MealEntryWorkflow(
+            store: try FileMealHistoryStore(directory: historyDirectory),
+            gateway: try gateway(fdcSearchReply: #"{ "totalHits": 0, "foods": [] }"#)
+        )
+        let reopened = try secondLaunch.openMealEntry(id: id)
+        XCTAssertEqual(reopened.foods.map(\.name), [laksa.name])
+        XCTAssertEqual(reopened.foods.map(\.portion), ["400 g"])
+        XCTAssertEqual(reopened.foods.map(\.sourceName), ["FSANZ AUSNUT 2023"])
+        XCTAssertEqual(reopened.foods.map(\.sourceRecordID), ["F008589"])
+        assertShowsFourHundredGramsOfPrawnLaksa(reopened.nutritionEstimate)
+    }
+
     func test_overlappingFoodsFromBothSourcesAreToldApartByTheirSourceAndThePersonChoosesOne() async throws {
         let workflow = MealEntryWorkflow(
             store: try FileMealHistoryStore(directory: historyDirectory),
@@ -115,6 +148,20 @@ final class ExpandNutritionSourceCoverageFeatureTests: XCTestCase {
         XCTAssertEqual(estimate.protein, "7.1 g", file: file, line: line)
         XCTAssertEqual(estimate.carbohydrates, "22.8 g", file: file, line: line)
         XCTAssertEqual(estimate.fat, "3.2 g", file: file, line: line)
+    }
+
+    /// AUSNUT F008589: 356 kJ (85.1 kcal), 4.8 g protein, 8 g available carbohydrate, 3.5 g fat per 100 g, for
+    /// 400 g.
+    private func assertShowsFourHundredGramsOfPrawnLaksa(
+        _ estimate: PresentedNutritionEstimate,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertEqual(estimate.label, "Approximate nutrition estimate", file: file, line: line)
+        XCTAssertEqual(estimate.calories, "340 kcal", file: file, line: line)
+        XCTAssertEqual(estimate.protein, "19.2 g", file: file, line: line)
+        XCTAssertEqual(estimate.carbohydrates, "32 g", file: file, line: line)
+        XCTAssertEqual(estimate.fat, "14 g", file: file, line: line)
     }
 
     /// The app's HTTP gateway, with each request it sends answered by the backend's food search in-process.
