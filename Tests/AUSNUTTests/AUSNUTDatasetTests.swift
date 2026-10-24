@@ -77,8 +77,27 @@ final class AUSNUTDatasetTests: XCTestCase {
         XCTAssertEqual(dataset.search("dumpling meat", limit: 10).map(\.recordID), ["F003651", "F010532"])
         XCTAssertEqual(dataset.search("fish curries", limit: 10).map(\.recordID), ["F003387"])
         XCTAssertEqual(dataset.search("dumpling", limit: 2).map(\.recordID), ["F003651", "F003657"])
-        XCTAssertEqual(dataset.search("sushi pizza", limit: 10), [])
+        XCTAssertEqual(dataset.search("pizza burger", limit: 10), [])
         XCTAssertEqual(dataset.search(" , ", limit: 10), [])
+    }
+
+    func test_whenNoNameHasEveryQueryWordSearchRetriesWithEachOneWordLeftOut() throws {
+        let dataset = try Self.dataset(named: [
+            ("F007649", "Rice, cooked, for making sushi"),
+            ("F009009", "Sushi, salmon"),
+            ("F008991", "Sushi, beef"),
+            ("F008992", "Sushi, california roll"),
+            ("F008801", "Spring roll, vegetable filling, takeaway"),
+        ])
+
+        // "salmon sushi" finds "Sushi, salmon" with no word to spare, "sushi roll" finds the california roll with
+        // one; "salmon roll" finds nothing.
+        XCTAssertEqual(dataset.search("salmon sushi roll", limit: 10).map(\.recordID), ["F009009", "F008992"])
+        XCTAssertEqual(dataset.search("salmon sushi roll", limit: 1).map(\.recordID), ["F009009"])
+        // A query some name fully matches is not retried: "sushi" alone would also find the other sushi.
+        XCTAssertEqual(dataset.search("sushi salmon", limit: 10).map(\.recordID), ["F009009"])
+        XCTAssertEqual(dataset.search("rolls", limit: 10).map(\.recordID), ["F008992", "F008801"])
+        XCTAssertEqual(dataset.search("salmon pizza burger", limit: 10), [])
     }
 
     func test_thePackagedAUSNUT2023DataLoadsEveryFoodWithItsMeasures() throws {
