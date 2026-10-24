@@ -56,6 +56,7 @@ final class FoodSearchContractTests: XCTestCase {
 
         XCTAssertEqual(reply.statusCode, 200)
         let foods = try JSONDecoder().decode(FoodSearchResponse.self, from: reply.body).foods
+        // Every name has every query word, so FDC's come first.
         XCTAssertEqual(foods.map { "\($0.sourceName) \($0.recordID)" }, [
             "USDA FoodData Central 2708346",
             "FSANZ AUSNUT 2023 F007661",
@@ -68,6 +69,37 @@ final class FoodSearchContractTests: XCTestCase {
             "Rice, white, long-grain, regular, enriched, cooked",
             "Rice, white, cooked with coconut milk",
         ])
+    }
+
+    func test_foodsWhoseNameHasEveryQueryWordComeFirstFromEitherSource() async throws {
+        let ausnut = AUSNUTFixtures.dataset(rows: [
+            #"12102005,F007662,Recipe,"Rice, white, cooked with coconut milk",768,3,6.8,27.3"#,
+            #"13801012,F009009,Recipe,"Sushi, salmon",647,7.2,3.2,23"#,
+        ])
+
+        // FDC's rice names lack "coconut"; AUSNUT's coconut rice has every word.
+        let coconutRice = await makeService(riceTransport, ausnut: ausnut)
+            .handle(requestBody: FDCFixtures.searchRequestBody("rice cooked coconut"))
+        XCTAssertEqual(try sourcesAndRecordIDs(coconutRice), [
+            "FSANZ AUSNUT 2023 F007662",
+            "USDA FoodData Central 2708346",
+            "USDA FoodData Central 168878",
+        ])
+        // AUSNUT finds "Sushi, salmon" with "roll" left out, so its name lacks a query word, like FDC's rice:
+        // with no name having every word, the results alternate FDC first.
+        let sushiRoll = await makeService(riceTransport, ausnut: ausnut)
+            .handle(requestBody: FDCFixtures.searchRequestBody("salmon sushi roll"))
+        XCTAssertEqual(try sourcesAndRecordIDs(sushiRoll), [
+            "USDA FoodData Central 2708346",
+            "FSANZ AUSNUT 2023 F009009",
+            "USDA FoodData Central 168878",
+        ])
+    }
+
+    private func sourcesAndRecordIDs(_ reply: AnalysisHTTPResponse) throws -> [String] {
+        XCTAssertEqual(reply.statusCode, 200)
+        return try JSONDecoder().decode(FoodSearchResponse.self, from: reply.body).foods
+            .map { "\($0.sourceName) \($0.recordID)" }
     }
 
     func test_whenFDCHasNoMatchAUSNUTFoodsAreAnsweredUpToTheResultLimit() async throws {

@@ -32,13 +32,17 @@ public struct FoodDataCentralConfiguration: Sendable {
 ///   search's relevance order.
 /// - The packaged AUSNUT 2023 data (`AUSNUTDataset`), which covers mixed dishes FDC lacks (ticket #13).
 ///
-/// The reply alternates between the two sources' results, FDC first, so overlapping foods appear side by side
-/// with their source names and either source's best matches reach the top. When FDC is not set up (no key) or
-/// fails, the AUSNUT results are answered alone; only when AUSNUT has no match either is FDC's failure reported
-/// (`notConfigured`, `providerUnavailable` or `malformedProviderOutput`). Every reply is JSON in the shared
-/// contract: a `FoodSearchResponse` (200) or an
-/// `AnalysisErrorResponse`. The key is sent only in the `X-Api-Key` request header; FDC replies and transport
-/// errors are never forwarded, so the key cannot leak to the app.
+/// The reply ranks by name, not source (ADR 0006): foods whose name has every word of the query (`FoodNameQuery`,
+/// the rule AUSNUT's search matches by) come before those whose name does not, from either source, since FDC
+/// answers almost any query and a photo suggestion's pre-review estimate uses the first food. Within each group
+/// the two sources' results alternate, FDC first, so overlapping foods appear side by side with their source
+/// names and plain foods both sources match keep FDC first.
+///
+/// When FDC is not set up (no key) or fails, the AUSNUT results are answered alone; only when AUSNUT has no match
+/// either is FDC's failure reported (`notConfigured`, `providerUnavailable` or `malformedProviderOutput`). Every
+/// reply is JSON in the shared contract: a `FoodSearchResponse` (200) or an `AnalysisErrorResponse`. The key is
+/// sent only in the `X-Api-Key` request header; FDC replies and transport errors are never forwarded, so the key
+/// cannot leak to the app.
 public struct FoodSearchService: Sendable {
     /// Most foods returned for one search, and asked of each source.
     public static let maximumResults = 10
@@ -90,8 +94,11 @@ public struct FoodSearchService: Sendable {
             guard ausnutFoods.isEmpty else { return .success(FoodSearchResponse(foods: ausnutFoods)) }
             return (error as? SourceFailure)?.reply ?? .foodSourceUnavailable
         }
-        let foods = Self.alternating(fdcFoods, ausnutFoods).prefix(Self.maximumResults)
-        return .success(FoodSearchResponse(foods: Array(foods)))
+        let nameQuery = FoodNameQuery(query)
+        let isNameMatch = { (food: DocumentedFood) in nameQuery.isMatched(byName: food.name) }
+        let foods = Self.alternating(fdcFoods.filter(isNameMatch), ausnutFoods.filter(isNameMatch))
+            + Self.alternating(fdcFoods.filter { !isNameMatch($0) }, ausnutFoods.filter { !isNameMatch($0) })
+        return .success(FoodSearchResponse(foods: Array(foods.prefix(Self.maximumResults))))
     }
 
     /// FDC's suitable foods for the query in its relevance order, with their full records' serving units.

@@ -57,7 +57,7 @@ public struct AUSNUTDataset: Sendable {
                 servingUnits: servingUnits[key] ?? []
             )
         }
-        nameWords = foods.map { Self.words(in: $0.name) }
+        nameWords = foods.map { FoodNameQuery.words(in: $0.name) }
     }
 
     /// The AUSNUT 2023 data packaged with this module. Reading it takes a moment; load it once and keep it.
@@ -73,49 +73,55 @@ public struct AUSNUTDataset: Sendable {
         )
     }
 
-    /// The foods whose name has every word of the query, at most `limit`, most relevant first.
+    /// The foods whose name has every word of the query (`FoodNameQuery`), at most `limit`, most relevant first.
     ///
-    /// A query word matches a name word it begins, ignoring case and accents, and a plural matches its singular
-    /// ("curries" finds "Curry"). Names with fewer words beyond the query come first, then the workbook's
-    /// order, so "rice white cooked" puts "Rice, white, cooked" before "Rice, white, cooked with coconut milk".
+    /// Only when no name has every word does it retry with each one word left out and take every food those
+    /// find: a photo suggestion's query often has a word AUSNUT's names lack, such as "roll" in "salmon sushi
+    /// roll" for "Sushi, salmon" (ADR 0006). Either way, names with fewer words beyond the query come first, then
+    /// the workbook's order, so "rice white cooked" puts "Rice, white, cooked" before "Rice, white, cooked with
+    /// coconut milk". A few dish names AUSNUT words otherwise are searched in AUSNUT's words (`wordSwaps`).
     public func search(_ query: String, limit: Int) -> [DocumentedFood] {
-        let queryWords = Self.words(in: query)
-        guard !queryWords.isEmpty, limit > 0 else { return [] }
+        let query = FoodNameQuery(Self.swappingWords(in: query))
+        guard !query.isEmpty, limit > 0 else { return [] }
 
-        let matches = nameWords.indices.compactMap { index -> (index: Int, extraWords: Int)? in
-            let words = nameWords[index]
-            guard queryWords.allSatisfy({ queryWord in words.contains { Self.word($0, matches: queryWord) } })
-            else { return nil }
-            let extraWords = words.filter { word in !queryWords.contains { Self.word(word, matches: $0) } }.count
-            return (index, extraWords)
+        var matches = unmatchedWordCountByFood(matching: query)
+        if matches.isEmpty {
+            for shorter in query.withOneWordLeftOut {
+                matches.merge(unmatchedWordCountByFood(matching: shorter), uniquingKeysWith: min)
+            }
         }
         return matches
-            .sorted { ($0.extraWords, $0.index) < ($1.extraWords, $1.index) }
+            .sorted { ($0.value, $0.key) < ($1.value, $1.key) }
             .prefix(limit)
-            .map { foods[$0.index] }
+            .map { foods[$0.key] }
+    }
+
+    /// Each matching food's index in `foods`, with how many of its name words the query does not use.
+    private func unmatchedWordCountByFood(matching query: FoodNameQuery) -> [Int: Int] {
+        Dictionary(uniqueKeysWithValues: nameWords.indices.compactMap { index in
+            query.unmatchedWordCount(inName: nameWords[index]).map { (index, $0) }
+        })
     }
 
     /// Each food's name split into words, parallel to `foods`.
     private let nameWords: [[String]]
 
-    private static func words(in text: String) -> [String] {
-        text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
-            .split { !$0.isLetter && !$0.isNumber }
-            .map(String.init)
-    }
+    /// Photo-suggestion words for dishes, in the words AUSNUT names them with. Each was added for a query the
+    /// gap-dish list in `AUSNUTDatasetTests` showed finding nothing useful; add one only for such a miss (ADR 0006).
+    /// "curry laksa" drops "curry": alone it would rank every curry ahead of the laksa.
+    private static let wordSwaps: KeyValuePairs = [
+        "curry laksa": "laksa",
+        "gyoza": "fried dumpling",
+        "pho": "broth noodle",
+        "ramen": "broth noodle",
+        "rendang": "curry",
+    ]
 
-    private static func word(_ nameWord: String, matches queryWord: String) -> Bool {
-        singularForms(of: queryWord).contains { nameWord.hasPrefix($0) }
-    }
-
-    /// The word and, for an English plural, its possible singulars: "curries" → "curry", "potatoes" → "potato",
-    /// "dumplings" → "dumpling".
-    private static func singularForms(of word: String) -> [String] {
-        guard word.count > 2, word.hasSuffix("s") else { return [word] }
-        var forms = [word, String(word.dropLast())]
-        if word.hasSuffix("es") { forms.append(String(word.dropLast(2))) }
-        if word.hasSuffix("ies") { forms.append(word.dropLast(3) + "y") }
-        return forms
+    /// The query's words, with each run of words in `wordSwaps` replaced.
+    private static func swappingWords(in query: String) -> String {
+        wordSwaps.reduce(" \(FoodNameQuery.words(in: query).joined(separator: " ")) ") { text, swap in
+            text.replacingOccurrences(of: " \(swap.key) ", with: " \(swap.value) ")
+        }
     }
 
     static let kilojoulesPerKilocalorie = 4.184

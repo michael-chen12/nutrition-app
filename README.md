@@ -78,8 +78,9 @@ backend tests plus a build of its server, and a build of the iOS app for the Sim
 - `POST /v1/food-searches` searches USDA FoodData Central (Foundation, SR Legacy and Survey (FNDDS) foods),
   fetches the full records of the hits for their portion weights, and answers with documented foods normalized
   by the shared `FoodDataCentral` adapter: source name, FDC ID, nutrients per 100 g and serving units. It also
-  searches the packaged AUSNUT 2023 data (loaded once at start-up) and alternates the two sources' results, so
-  overlapping foods appear side by side, each with its source name and record ID.
+  searches the packaged AUSNUT 2023 data (loaded once at start-up). Foods whose name has every word of the
+  search come first, from either source. Within that group and the rest, the two sources' results alternate,
+  FDC first, so overlapping foods appear side by side, each with its source name and record ID (ADR 0006).
 
 Its `MealPhotoAnalysis` library holds every decision (request validation, provider request building, response
 validation, failure mapping, credential handling); contract tests run it against hand-built Gemini and FDC
